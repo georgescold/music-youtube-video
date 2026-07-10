@@ -39,11 +39,13 @@ export async function collectStats({ channel, creds, now, log = () => {} }) {
   return { ok: true, captured: rows.length, analytics: analyticsOk, needsReauth: an.needsReauth };
 }
 
-// Score de reach d'une vidéo : CTR*log(impressions) si dispo, sinon vitesse de vues (vues/jour).
+// Score de reach : vitesse de vues (vues/jour), pondérée par la rétention quand elle est disponible.
+// (CTR/impressions ne sont pas exposés par l'API Analytics pour une chaîne standard.)
 function reachScore(v, stat, now) {
-  if (stat.ctr != null && stat.impressions != null) return (stat.ctr / 100) * Math.log10(1 + stat.impressions) * 100;
   const ageDays = Math.max(1, (now - new Date(v.published_at || v.created_at)) / 86400000);
-  return (stat.views || 0) / ageDays; // vues/jour
+  const velocity = (stat.views || 0) / ageDays;
+  if (stat.avg_view_pct != null) return velocity * (0.5 + stat.avg_view_pct / 100); // récompense la rétention
+  return velocity;
 }
 
 // 2) Analyse + décisions : agrégats par émotion/créneau/durée + synthèse Claude. Renvoie le coach_state.

@@ -20,26 +20,14 @@ export async function getVideoAnalytics({ videoIds = [], startDate, endDate, cre
   const base = await query(accessToken, params);
   if (!base.ok) return { ok: false, error: base.error, needsReauth: base.needsReauth, byVideo: {} };
 
+  // NB : impressions/CTR ne sont PAS exposés par l'API Analytics pour une chaîne standard (Studio uniquement).
+  // On collecte vues + rétention + temps de visionnage, qui sont d'excellents signaux de reach.
   const byVideo = {};
   for (const row of base.rows) {
     byVideo[row.video] = {
       views: num(row.views), watchTimeMin: num(row.estimatedMinutesWatched),
       avgViewSec: num(row.averageViewDuration), avgViewPct: num(row.averageViewPercentage)
     };
-  }
-  // Impressions + CTR (report "adImpressions"-style non applicable ; on utilise le report d'impressions organiques).
-  const imp = new URLSearchParams({
-    ids: 'channel==MINE', startDate, endDate,
-    metrics: 'impressions,impressionClickThroughRate', dimensions: 'video', maxResults: '200',
-    filters: 'video==' + videoIds.slice(0, 200).join(',')
-  });
-  const impRes = await query(accessToken, imp);
-  if (impRes.ok) {
-    for (const row of impRes.rows) {
-      byVideo[row.video] = byVideo[row.video] || {};
-      byVideo[row.video].impressions = num(row.impressions);
-      byVideo[row.video].ctr = num(row.impressionClickThroughRate); // en %
-    }
   }
   return { ok: true, byVideo };
 }
