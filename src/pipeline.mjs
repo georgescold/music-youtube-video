@@ -74,7 +74,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     renderVideo({
       backgrounds, ads, audioPath, outPath, log,
       adFrequencyMin: channel?.ad_frequency_min ?? 10,
-      adDurationSec: channel?.ad_duration_sec ?? 8
+      adDurationSec: channel?.ad_duration_sec ?? 8,
+      adIntro: channel?.ad_intro !== false,
+      adOutro: channel?.ad_outro !== false,
+      placement: channel?.ad_placement
     });
     const durSec = Math.round(probeDuration(outPath));
     await logStep('render', 'ok', `${Math.round(durSec / 60)} min · fonds:${backgrounds.length} · pubs:${ads.length}`);

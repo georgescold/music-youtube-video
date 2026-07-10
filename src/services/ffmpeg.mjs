@@ -36,13 +36,15 @@ export function generateDefaultBackground(outPath, width = 1920, height = 1080) 
   return outPath;
 }
 
-// Calcule les fenêtres d'apparition des pubs : intro, puis toutes les `freqMin` min, puis outro.
-export function adIntervals(durationSec, freqMin, durSec) {
+// Calcule les fenêtres d'apparition des pubs : intro (option), toutes les `freqMin` min, outro (option).
+export function adIntervals(durationSec, freqMin, durSec, { intro = true, outro = true } = {}) {
   const D = durationSec, dur = Math.min(durSec, D);
-  const out = [[0, dur]];
+  const out = [];
+  if (intro) out.push([0, dur]);
   const step = Math.max(30, freqMin * 60);
   for (let t = step; t < D - dur; t += step) out.push([t, Math.min(t + dur, D)]);
-  out.push([Math.max(0, D - dur), D]);
+  if (outro) out.push([Math.max(0, D - dur), D]);
+  if (!out.length) return [];
   // fusionne les fenêtres qui se chevauchent (ex : freq très courte)
   out.sort((a, b) => a[0] - b[0]);
   const merged = [out[0]];
@@ -55,7 +57,7 @@ export function adIntervals(durationSec, freqMin, durSec) {
 }
 
 // backgrounds: [{ path, isVideo }] · ads: [{ path, isVideo }]
-export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, log = () => {} }) {
+export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, adIntro = true, adOutro = true, placement, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, log = () => {} }) {
   const D = Math.max(1, Math.round(probeDuration(audioPath)));
   const inputs = [];
   let idx = 0;
@@ -85,20 +87,24 @@ export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, ad
     filters.push(`[${inIdx}:v]setsar=1[bg]`); bgLabel = 'bg';
   }
 
-  // ── Pubs (fenêtres réparties, assets en rotation) ──
-  const windows = adIntervals(D, adFrequencyMin, adDurationSec);
+  // ── Pubs (position manuelle enregistrée, fenêtres réparties, assets en rotation) ──
+  const p = placement || {};
+  const boxW = Math.max(16, Math.round(width * (p.w ?? 0.28)));
+  const boxH = Math.max(16, Math.round(height * (p.h ?? 0.40)));
+  const ox = Math.min(width - 1, Math.max(0, Math.round(width * (p.x ?? 0.68))));
+  const oy = Math.min(height - 1, Math.max(0, Math.round(height * (p.y ?? 0.55))));
+  const windows = adIntervals(D, adFrequencyMin, adDurationSec, { intro: adIntro, outro: adOutro });
   let vLabel = bgLabel;
-  if (ads.length) {
+  if (ads.length && windows.length) {
     const perAd = ads.map(() => []);
     windows.forEach((w, k) => perAd[k % ads.length].push(w));
     ads.forEach((ad, ai) => {
       const mine = perAd[ai];
       if (!mine.length) return;
       const inIdx = ad.isVideo ? addInput(['-stream_loop', '-1', '-i', ad.path]) : addInput(['-loop', '1', '-i', ad.path]);
-      const boxW = Math.round(width * 0.30), boxH = Math.round(height * 0.42);
       filters.push(`[${inIdx}:v]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1[ad${ai}]`);
       const enable = mine.map(([s, e]) => `between(t,${s.toFixed(2)},${e.toFixed(2)})`).join('+');
-      filters.push(`[${vLabel}][ad${ai}]overlay=W-w-48:H-h-48:enable='${enable}':shortest=1[v${ai}]`);
+      filters.push(`[${vLabel}][ad${ai}]overlay=${ox}:${oy}:enable='${enable}':shortest=1[v${ai}]`);
       vLabel = `v${ai}`;
     });
   }

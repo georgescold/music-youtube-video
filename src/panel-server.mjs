@@ -371,6 +371,9 @@ const server = http.createServer(async (req, res) => {
       if (b.target_duration_sec) patch.target_duration_sec = Math.max(600, Number(b.target_duration_sec) || 5400);
       if (b.ad_frequency_min != null) patch.ad_frequency_min = Math.max(1, Number(b.ad_frequency_min) || 10);
       if (b.ad_duration_sec != null) patch.ad_duration_sec = Math.max(2, Number(b.ad_duration_sec) || 8);
+      if (b.ad_placement && typeof b.ad_placement === 'object') patch.ad_placement = b.ad_placement;
+      if (typeof b.ad_intro === 'boolean') patch.ad_intro = b.ad_intro;
+      if (typeof b.ad_outro === 'boolean') patch.ad_outro = b.ad_outro;
       // Secrets : mis à jour uniquement si une nouvelle valeur non vide est fournie (sinon on conserve l'existant).
       for (const [field, incoming] of [['yt_client_secret', b.yt_client_secret], ['yt_refresh_token', b.yt_refresh_token], ['epidemic_jwt', b.epidemic_jwt], ['claude_token', b.claude_token]]) {
         if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
