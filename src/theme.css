@@ -1,13 +1,14 @@
 /* Thème sombre partagé. On surcharge la palette de variables ; les pages ne changent pas. */
 :root[data-theme="dark"] {
-  --color-paper: #1b1a17;
-  --color-soft:  #232019;
-  --color-soft2: #2c2822;
-  --color-ink:   #f3efe8;
-  --color-mut:   #a8a299;
-  --color-mut2:  #7c766c;
-  --color-rule:  #322e28;
-  --color-rule2: #423d35;
+  /* Dark neutre façon YouTube (gris quasi-noir, aucune teinte chaude). */
+  --color-paper: #181818;
+  --color-soft:  #0f0f0f;
+  --color-soft2: #272727;
+  --color-ink:   #f1f1f1;
+  --color-mut:   #aaaaaa;
+  --color-mut2:  #717171;
+  --color-rule:  #272727;
+  --color-rule2: #3f3f3f;
   color-scheme: dark;
 }
 /* Champs de formulaire : le placeholder et les inputs restent lisibles en sombre. */
