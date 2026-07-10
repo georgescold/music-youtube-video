@@ -127,8 +127,8 @@
     <label><input type="radio" name="kind" value="other"><span>Autre</span></label>
   </div>
   <div class="dropzone" id="dz">
-    <strong>Clique ou dépose un fichier ici</strong><br>Vidéo, image — 45&nbsp;Mo max
-    <input type="file" id="file">
+    <strong>Clique ou dépose des fichiers ici</strong><br>Plusieurs à la fois — vidéo, image — 45&nbsp;Mo max chacun
+    <input type="file" id="file" multiple>
   </div>
   <div class="progress" id="progress"></div>
 
@@ -182,30 +182,40 @@ document.getElementById('logout').onclick = async (e) => {
 dz.onclick = () => fileInput.click();
 ['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
 ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
-dz.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) upload(f); });
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) upload(fileInput.files[0]); });
+dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) uploadMany(e.dataTransfer.files); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadMany(fileInput.files); });
 document.querySelectorAll('input[name="kind"]').forEach(r => r.addEventListener('change', renderList));
 
-async function upload(file) {
-  const kind = document.querySelector('input[name="kind"]:checked').value;
-  progress.textContent = 'Envoi de ' + file.name + '…';
+// Upload d'un fichier (sans effet de bord) -> { ok, asset, error }.
+async function uploadOne(file, kind) {
   try {
     const r = await fetch('/api/assets/upload?kind=' + encodeURIComponent(kind) + '&filename=' + encodeURIComponent(file.name), {
-      method: 'POST',
-      headers: { 'content-type': file.type || 'application/octet-stream' },
-      body: file
+      method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file
     });
-    const d = await r.json();
-    if (!d.ok) { progress.textContent = 'Erreur : ' + (d.error || 'inconnue'); return; }
-    progress.textContent = 'OK — ' + file.name + ' ajouté.';
-    fileInput.value = '';
-    await load();
-    if (kind === 'ad' && d.asset) {
-      const rows = await (await fetch('/api/assets')).json();
-      const a = rows.find(x => x.id === d.asset.id);
-      if (a) openPos(a);
-    }
-  } catch (e) { progress.textContent = 'Erreur réseau : ' + e.message; }
+    return await r.json();
+  } catch (e) { return { ok: false, error: 'réseau : ' + e.message }; }
+}
+
+// Upload de plusieurs fichiers, séquentiel avec progression.
+async function uploadMany(files) {
+  const kind = document.querySelector('input[name="kind"]:checked').value;
+  const list = Array.from(files);
+  let ok = 0, lastAd = null, lastErr = '';
+  for (let i = 0; i < list.length; i++) {
+    progress.textContent = 'Envoi ' + (i + 1) + '/' + list.length + ' : ' + list[i].name + '…';
+    const d = await uploadOne(list[i], kind);
+    if (d.ok) { ok++; if (kind === 'ad' && d.asset) lastAd = d.asset; }
+    else lastErr = (list[i].name + ' — ' + (d.error || 'inconnue'));
+  }
+  fileInput.value = '';
+  await load();
+  progress.textContent = ok + '/' + list.length + ' asset(s) ajouté(s)' + (lastErr ? ' · erreur : ' + lastErr : '') + '.';
+  // Éditeur de position : uniquement si UNE seule pub a été importée (sinon on règle chacune via « Position »).
+  if (kind === 'ad' && list.length === 1 && lastAd) {
+    const rows = await (await fetch('/api/assets')).json();
+    const a = rows.find(x => x.id === lastAd.id);
+    if (a) openPos(a);
+  }
 }
 
 const KIND_LABEL = { background: 'Fond', ad: 'Publicité', other: 'Autre', ad_banner_16x9: 'Publicité', ad_clip_9x16: 'Publicité', background_image: 'Fond' };
