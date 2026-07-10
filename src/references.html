@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chansons de référence — Au Bon Moment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --color-paper: #ffffff;
+    --color-soft: #faf8f4;
+    --color-soft2: #f2efe9;
+    --color-ink: #181715;
+    --color-mut: #6e6a62;
+    --color-mut2: #a6a199;
+    --color-rule: #ece9e3;
+    --color-rule2: #dedad2;
+  }
+  html { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--color-paper); color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px; line-height: 1.5;
+  }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .topbar { border-bottom: 1px solid var(--color-rule); }
+  .topbar-inner { max-width: 880px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .nav { display: flex; align-items: center; gap: 4px; }
+  .nav a { color: var(--color-mut); font-size: 13px; font-weight: 600; text-decoration: none; padding: 6px 12px; border-radius: 100px; }
+  .nav a:hover { color: var(--color-ink); background: var(--color-soft); }
+  .nav a.active { color: var(--color-ink); background: var(--color-soft2); }
+  .btn-ghost {
+    display: inline-flex; align-items: center; background: var(--color-paper); color: var(--color-ink);
+    border: 1px solid var(--color-rule2); border-radius: 100px; padding: 6px 14px;
+    font-size: 12.5px; font-weight: 600; text-decoration: none;
+    transition: background .2s ease, border-color .2s ease;
+  }
+  .btn-ghost:hover { background: var(--color-soft); border-color: var(--color-ink); }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 24px 64px; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
+  .page-sub { color: var(--color-mut); font-size: 13px; margin: 0 0 28px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--color-mut); font-weight: 700; margin: 0 0 12px; }
+
+  .form-card {
+    background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 28px;
+  }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--color-mut); margin-bottom: 5px; }
+  .field input {
+    width: 100%; padding: 9px 11px; background: var(--color-paper); border: 1px solid var(--color-rule2);
+    border-radius: 8px; font-size: 13.5px; outline: none; color: var(--color-ink); font-family: var(--font-sans);
+  }
+  .field input:focus { border-color: var(--color-ink); }
+  .field-hint { font-size: 11.5px; color: var(--color-mut2); margin-top: 4px; }
+  .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .form-row .field { flex: 1; min-width: 220px; margin-bottom: 0; }
+  .btn-primary {
+    background: var(--color-ink); color: var(--color-paper); border: 0; border-radius: 100px;
+    padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-sans);
+    white-space: nowrap;
+  }
+  .btn-primary:disabled { opacity: .5; cursor: default; }
+  .form-msg { font-size: 12px; color: var(--color-mut); margin-top: 10px; min-height: 1.2em; }
+  .form-msg.err { color: #b3413a; }
+
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .ref { background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 14px; }
+  .ref.inactive { opacity: .5; }
+  .ref-main { flex: 1; min-width: 0; }
+  .ref-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ref-sub { font-size: 12px; color: var(--color-mut); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ref-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+  .tag { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; background: var(--color-soft2); color: var(--color-mut); border: 1px solid var(--color-rule2); border-radius: 100px; padding: 2px 8px; }
+  .ref-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .ref-actions a { color: var(--color-mut); font-size: 12px; text-decoration: none; }
+  .ref-actions a:hover { color: var(--color-ink); }
+  .ref-actions button { background: var(--color-paper); border: 1px solid var(--color-rule2); color: var(--color-mut); font-size: 11.5px; padding: 5px 10px; border-radius: 100px; cursor: pointer; transition: border-color .2s, color .2s; }
+  .ref-actions button:hover { border-color: var(--color-ink); color: var(--color-ink); }
+  .empty { color: var(--color-mut); font-size: 13px; padding: 16px 0; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">Au Bon Moment</span>
+    <div class="topbar-right">
+      <nav class="nav">
+        <a href="/videos">Vidéos</a>
+        <a href="/">Assets</a>
+        <a href="/references" class="active">Chansons de référence</a>
+      </nav>
+      <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+  <h1>Chansons de référence</h1>
+  <p class="page-sub">Colle des liens Spotify pour orienter le style et le mood des playlists générées.</p>
+
+  <div class="form-card">
+    <form id="f">
+      <div class="form-row">
+        <div class="field">
+          <label>Lien Spotify</label>
+          <input id="spotify_url" type="url" placeholder="https://open.spotify.com/track/..." required>
+        </div>
+        <div class="field">
+          <label>Mood (séparés par une virgule)</label>
+          <input id="mood_tags" type="text" placeholder="romantique, doux, piano">
+        </div>
+        <button class="btn-primary" id="btn" type="submit">Ajouter</button>
+      </div>
+      <div class="form-msg" id="msg"></div>
+    </form>
+  </div>
+
+  <h2>Références (<span id="count">0</span>)</h2>
+  <div class="list" id="list"></div>
+  <div class="empty" id="empty" style="display:none">Aucune chanson de référence pour l'instant.</div>
+</div>
+
+<script>
+document.getElementById('logout').onclick = async (e) => {
+  e.preventDefault();
+  await fetch('/api/auth/logout', { method: 'POST' });
+  location.href = '/login';
+};
+
+const f = document.getElementById('f');
+const btn = document.getElementById('btn');
+const msg = document.getElementById('msg');
+const list = document.getElementById('list');
+const empty = document.getElementById('empty');
+const count = document.getElementById('count');
+
+f.onsubmit = async (e) => {
+  e.preventDefault();
+  btn.disabled = true; msg.className = 'form-msg'; msg.textContent = 'Ajout…';
+  try {
+    const r = await fetch('/api/references', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        spotify_url: document.getElementById('spotify_url').value.trim(),
+        mood_tags: document.getElementById('mood_tags').value.trim()
+      })
+    });
+    const d = await r.json();
+    if (!d.ok) { msg.className = 'form-msg err'; msg.textContent = d.error || 'Erreur'; btn.disabled = false; return; }
+    f.reset(); msg.textContent = ''; btn.disabled = false;
+    load();
+  } catch (err) { msg.className = 'form-msg err'; msg.textContent = 'Erreur réseau'; btn.disabled = false; }
+};
+
+function fmtDate(s) { return new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }); }
+
+async function load() {
+  const rows = await (await fetch('/api/references')).json();
+  count.textContent = rows.length;
+  list.innerHTML = '';
+  empty.style.display = rows.length ? 'none' : 'block';
+  for (const r of rows) {
+    const div = document.createElement('div');
+    div.className = 'ref' + (r.active ? '' : ' inactive');
+    const tags = (r.mood_tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+    div.innerHTML = `
+      <div class="ref-main">
+        <div class="ref-title">${r.title || r.spotify_url}</div>
+        <div class="ref-sub tnum">${r.artist ? r.artist + ' · ' : ''}ajouté le ${fmtDate(r.added_at)}</div>
+        ${tags ? '<div class="ref-tags">' + tags + '</div>' : ''}
+      </div>
+      <div class="ref-actions">
+        <a href="${r.spotify_url}" target="_blank">Ouvrir ↗</a>
+        <button class="toggle">${r.active ? 'Désactiver' : 'Activer'}</button>
+        <button class="del">Supprimer</button>
+      </div>`;
+    div.querySelector('.toggle').onclick = async () => {
+      await fetch('/api/references/toggle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: r.id, active: !r.active }) });
+      load();
+    };
+    div.querySelector('.del').onclick = async () => {
+      if (!confirm('Supprimer cette référence ?')) return;
+      await fetch('/api/references/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: r.id }) });
+      load();
+    };
+    list.appendChild(div);
+  }
+}
+load();
+</script>
+</body>
+</html>

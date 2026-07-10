@@ -1,0 +1,13 @@
+{
+  "name": "music-youtube-video",
+  "version": "0.1.0",
+  "description": "Pipeline automatise de playlists YouTube (Au Bon Moment) au service de l'acquisition Compaatible",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "panel": "node src/panel-server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

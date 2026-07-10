@@ -1,0 +1,14 @@
+.git
+.env
+.env.local
+node_modules
+data
+scripts
+Compaatible pub
+media
+output
+tmp
+*.mp4
+*.mov
+*.mp3
+*.wav

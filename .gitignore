@@ -1,0 +1,48 @@
+# ── Secrets — NE JAMAIS COMMITER ──
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+client_secret*.json
+token.json
+service-account*.json
+
+# ── Node ──
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+
+# ── Python ──
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ── Media (fichiers lourds, ne pas versionner) ──
+media/
+output/
+tmp/
+*.mp4
+*.mov
+*.mkv
+*.mp3
+*.wav
+
+# ── Données locales (comptes, sessions) ──
+/data
+data-test/
+
+# ── Contenu local (à gérer via le panneau / Supabase, pas le repo) ──
+/Images banque/
+/Compaatible pub/
+Titres idées.txt
+
+# ── OS / éditeurs ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

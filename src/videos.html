@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vidéos — Au Bon Moment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --color-paper: #ffffff; --color-soft: #faf8f4; --color-soft2: #f2efe9;
+    --color-ink: #181715; --color-mut: #6e6a62; --color-mut2: #a6a199;
+    --color-rule: #ece9e3; --color-rule2: #dedad2;
+  }
+  html { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .topbar { border-bottom: 1px solid var(--color-rule); }
+  .topbar-inner { max-width: 880px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .nav { display: flex; align-items: center; gap: 4px; }
+  .nav a { color: var(--color-mut); font-size: 13px; font-weight: 600; text-decoration: none; padding: 6px 12px; border-radius: 100px; }
+  .nav a:hover { color: var(--color-ink); background: var(--color-soft); }
+  .nav a.active { color: var(--color-ink); background: var(--color-soft2); }
+  .btn-ghost { display: inline-flex; align-items: center; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-rule2); border-radius: 100px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; text-decoration: none; transition: background .2s, border-color .2s; }
+  .btn-ghost:hover { background: var(--color-soft); border-color: var(--color-ink); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 24px 64px; }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
+  .page-sub { color: var(--color-mut); font-size: 13px; margin: 0 0 24px; }
+  .btn-primary { background: var(--color-ink); color: var(--color-paper); border: 0; border-radius: 100px; padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
+  .btn-primary:disabled { opacity: .5; cursor: default; }
+  .genbar { font-size: 12.5px; color: var(--color-mut); margin: -8px 0 24px; min-height: 1.2em; }
+  .genbar.active { color: var(--color-ink); }
+  .genbar .dot { display: inline-block; width: 7px; height: 7px; border-radius: 100px; background: var(--color-ink); margin-right: 7px; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
+
+  .list { display: flex; flex-direction: column; gap: 14px; }
+  .vid { background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 12px; overflow: hidden; }
+  .vid-head { padding: 14px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .vid-head:hover { background: var(--color-soft); }
+  .vid-title { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vid-meta { font-size: 11.5px; color: var(--color-mut); margin-top: 2px; }
+  .badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 10px; border-radius: 100px; border: 1px solid var(--color-rule2); background: var(--color-soft2); color: var(--color-mut); white-space: nowrap; }
+  .badge.pending_review { border-color: var(--color-ink); color: var(--color-ink); }
+  .badge.published { background: var(--color-ink); color: var(--color-paper); border-color: var(--color-ink); }
+  .badge.failed, .badge.rejected { color: #b3413a; border-color: #e3c9c6; background: #fbf2f1; }
+
+  .vid-body { border-top: 1px solid var(--color-rule); padding: 16px; display: none; }
+  .vid-body.open { display: block; }
+  .preview { aspect-ratio: 16/9; width: 100%; border: 0; border-radius: 8px; background: var(--color-soft2); margin-bottom: 14px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--color-mut); margin-bottom: 5px; }
+  .field input, .field textarea { width: 100%; padding: 9px 11px; background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; font-size: 13px; color: var(--color-ink); font-family: var(--font-sans); resize: vertical; }
+  .field textarea { min-height: 150px; line-height: 1.55; }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--color-ink); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+  .btn-sec { background: var(--color-paper); border: 1px solid var(--color-rule2); color: var(--color-ink); border-radius: 100px; padding: 8px 15px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
+  .btn-sec:hover { background: var(--color-soft); border-color: var(--color-ink); }
+  .btn-danger { color: #b3413a; }
+  .btn-danger:hover { border-color: #b3413a; background: #fbf2f1; }
+  .spacer { flex: 1; }
+  .savemsg { font-size: 12px; color: var(--color-mut); }
+  .yt-link { font-size: 12px; color: var(--color-mut); text-decoration: none; }
+  .yt-link:hover { color: var(--color-ink); }
+  .empty { color: var(--color-mut); font-size: 13px; padding: 20px 0; }
+  .err { color: #b3413a; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">Au Bon Moment</span>
+    <div class="topbar-right">
+      <nav class="nav">
+        <a href="/videos" class="active">Vidéos</a>
+        <a href="/">Assets</a>
+        <a href="/references">Chansons de référence</a>
+      </nav>
+      <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Vidéos</h1>
+      <p class="page-sub">Les vidéos générées atterrissent ici en brouillon privé. Relis, puis publie.</p>
+    </div>
+    <button class="btn-primary" id="gen">Générer une vidéo</button>
+  </div>
+  <div class="genbar" id="genbar"></div>
+
+  <div class="list" id="list"></div>
+  <div class="empty" id="empty" style="display:none">Aucune vidéo pour l'instant. Clique « Générer une vidéo ».</div>
+</div>
+
+<script>
+document.getElementById('logout').onclick = async (e) => { e.preventDefault(); await fetch('/api/auth/logout', { method: 'POST' }); location.href = '/login'; };
+
+const STATUS_LABEL = { queued: 'En file', curating: 'Curation', downloading: 'Téléchargement', rendering: 'Montage', uploading: 'Upload', pending_review: 'À valider', approved: 'Approuvée', published: 'Publiée', rejected: 'Rejetée', failed: 'Échec' };
+const genBtn = document.getElementById('gen');
+const genbar = document.getElementById('genbar');
+const list = document.getElementById('list');
+const empty = document.getElementById('empty');
+let openId = null;
+
+function fmtDate(s) { return new Date(s).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+function fmtDur(sec) { if (!sec) return ''; const m = Math.floor(sec / 60), s = sec % 60; return m + ' min ' + String(s).padStart(2, '0'); }
+
+genBtn.onclick = async () => {
+  genBtn.disabled = true;
+  const r = await fetch('/api/videos/generate', { method: 'POST' });
+  const d = await r.json();
+  if (!d.ok) { genbar.className = 'genbar err'; genbar.textContent = d.error; genBtn.disabled = false; return; }
+  pollStatus();
+};
+
+async function pollStatus() {
+  const s = await (await fetch('/api/videos/status')).json();
+  if (s.running) {
+    genBtn.disabled = true;
+    genbar.className = 'genbar active';
+    genbar.innerHTML = '<span class="dot"></span>Génération en cours — ' + (s.phase || '…');
+    setTimeout(pollStatus, 2000);
+    load();
+  } else {
+    genBtn.disabled = false;
+    if (s.error) { genbar.className = 'genbar err'; genbar.textContent = 'Échec : ' + s.error; }
+    else if (s.phase === 'terminé') { genbar.className = 'genbar'; genbar.textContent = 'Vidéo générée — à valider ci-dessous.'; }
+    else genbar.textContent = '';
+    load();
+  }
+}
+
+async function save(id, btn) {
+  const body = { id, title: document.getElementById('t_' + id).value, description: document.getElementById('d_' + id).value };
+  btn.textContent = 'Enregistrement…';
+  await fetch('/api/videos/update', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  btn.textContent = 'Enregistré ✓';
+  setTimeout(() => { btn.textContent = 'Enregistrer les modifs'; }, 1500);
+}
+
+async function act(url, id, confirmMsg) {
+  if (confirmMsg && !confirm(confirmMsg)) return;
+  const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+  const d = await r.json();
+  if (!d.ok) { alert(d.error || 'Erreur'); return; }
+  load();
+}
+
+async function load() {
+  const rows = await (await fetch('/api/videos')).json();
+  empty.style.display = rows.length ? 'none' : 'block';
+  list.innerHTML = '';
+  for (const v of rows) {
+    const div = document.createElement('div');
+    div.className = 'vid';
+    const open = v.id === openId;
+    const canReview = v.status === 'pending_review';
+    const embed = v.youtube_video_id ? `<iframe class="preview" src="https://www.youtube.com/embed/${v.youtube_video_id}" allowfullscreen></iframe>` : '';
+    const ytLink = v.youtube_url ? `<a class="yt-link" href="${v.youtube_url}" target="_blank">Ouvrir sur YouTube (privé) ↗</a>` : '';
+    div.innerHTML = `
+      <div class="vid-head" data-id="${v.id}">
+        <div style="flex:1;min-width:0">
+          <div class="vid-title">${v.title || '(sans titre)'}</div>
+          <div class="vid-meta tnum">${fmtDate(v.created_at)}${v.duration_sec ? ' · ' + fmtDur(v.duration_sec) : ''}${v.mood ? ' · ' + v.mood : ''}</div>
+        </div>
+        <span class="badge ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
+      </div>
+      <div class="vid-body ${open ? 'open' : ''}" id="body_${v.id}">
+        ${v.status === 'failed' ? '<div class="field err">Erreur : ' + (v.error || 'inconnue') + '</div>' : ''}
+        ${embed}
+        ${ytLink ? '<div style="margin-bottom:14px">' + ytLink + '</div>' : ''}
+        <div class="field"><label>Titre</label><input id="t_${v.id}" value="${(v.title || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field"><label>Description</label><textarea id="d_${v.id}">${v.description || ''}</textarea></div>
+        <div class="actions">
+          <button class="btn-sec save">Enregistrer les modifs</button>
+          ${canReview ? '<button class="btn-primary approve">Valider &amp; publier</button>' : ''}
+          ${canReview ? '<button class="btn-sec reject">Rejeter</button>' : ''}
+          <div class="spacer"></div>
+          <button class="btn-sec btn-danger del">Supprimer</button>
+        </div>
+      </div>`;
+    div.querySelector('.vid-head').onclick = () => { openId = open ? null : v.id; load(); };
+    const q = sel => div.querySelector(sel);
+    if (q('.save')) q('.save').onclick = (e) => save(v.id, e.target);
+    if (q('.approve')) q('.approve').onclick = () => act('/api/videos/approve', v.id, 'Publier cette vidéo sur YouTube (passage en public) ?');
+    if (q('.reject')) q('.reject').onclick = () => act('/api/videos/reject', v.id);
+    if (q('.del')) q('.del').onclick = () => act('/api/videos/delete', v.id, 'Supprimer cette vidéo (et la retirer de YouTube si elle y est) ?');
+    list.appendChild(div);
+  }
+}
+load();
+pollStatus();
+</script>
+</body>
+</html>
