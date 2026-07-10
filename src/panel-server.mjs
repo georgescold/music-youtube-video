@@ -39,16 +39,31 @@ const DATA = process.env.DATA_DIR || './data';
 const MAX_UPLOAD_BYTES = 45 * 1024 * 1024; // marge sous la limite bucket (50 Mo)
 
 // ── Etat de generation + planificateur quotidien ──
-const genState = { running: false, videoId: null, phase: null, error: null, startedAt: null, lastResult: null };
+const genState = { running: false, videoId: null, phase: null, error: null, cancelled: false, startedAt: null, lastResult: null, log: [] };
 let genTimer = null;
 let coachTimer = null;
+let genController = null;
 
 function generateOnce({ dryRun = false } = {}) {
   if (genState.running) return false;
-  Object.assign(genState, { running: true, error: null, phase: 'démarrage', startedAt: Date.now(), videoId: null });
-  runPipeline({ dryRun, log: m => { genState.phase = m; } })
-    .then(r => { Object.assign(genState, { running: false, lastResult: r, videoId: r.videoId, phase: 'terminé' }); })
-    .catch(e => { Object.assign(genState, { running: false, error: String(e.message || e), phase: 'échec' }); console.error('[gen] échec', e); });
+  const controller = { cancelled: false, child: null };
+  genController = controller;
+  Object.assign(genState, { running: true, error: null, cancelled: false, phase: 'démarrage', startedAt: Date.now(), videoId: null, log: [] });
+  const pushLog = (m) => {
+    const line = { t: Date.now(), m: String(m) };
+    genState.phase = line.m; genState.log.push(line);
+    if (genState.log.length > 600) genState.log.shift();
+  };
+  pushLog('démarrage de la génération…');
+  runPipeline({ dryRun, controller, log: pushLog })
+    .then(r => { Object.assign(genState, { running: false, lastResult: r, videoId: r.videoId, phase: 'terminé' }); pushLog('✅ terminé — vidéo prête'); })
+    .catch(e => {
+      const cancelled = controller.cancelled || /cancel/i.test(String(e.message || e));
+      Object.assign(genState, { running: false, cancelled, error: cancelled ? null : String(e.message || e), phase: cancelled ? 'annulé' : 'échec' });
+      pushLog(cancelled ? '⏹️ génération annulée' : ('❌ échec : ' + String(e.message || e)));
+      if (!cancelled) console.error('[gen] échec', e);
+    })
+    .finally(() => { if (genController === controller) genController = null; });
   return true;
 }
 
@@ -390,13 +405,25 @@ const server = http.createServer(async (req, res) => {
       return json(res, rows);
     }
     if (req.method === 'GET' && path === '/api/videos/status') {
-      return json(res, genState);
+      const since = Math.max(0, Number(q.get('since')) || 0); // n'envoie que les nouvelles lignes de journal
+      return json(res, {
+        running: genState.running, phase: genState.phase, error: genState.error, cancelled: genState.cancelled,
+        videoId: genState.videoId, startedAt: genState.startedAt,
+        total: genState.log.length, log: genState.log.slice(since)
+      });
     }
     if (req.method === 'POST' && path === '/api/videos/generate') {
       const refs = await dbSelect('reference_songs', '?active=eq.true&limit=1').catch(() => []);
       if (!refs.length) return json(res, { ok: false, error: 'Ajoute au moins une chanson de référence active avant de générer.' });
       const started = generateOnce({ dryRun: false });
       return json(res, { ok: true, started });
+    }
+    if (req.method === 'POST' && path === '/api/videos/generate/cancel') {
+      if (!genState.running || !genController) return json(res, { ok: false, error: 'aucune génération en cours' });
+      genController.cancelled = true;
+      genState.phase = 'annulation…';
+      try { genController.child?.kill('SIGKILL'); } catch {}
+      return json(res, { ok: true });
     }
     if (req.method === 'POST' && path === '/api/videos/approve') {
       const b = await readJsonBody(req);
@@ -577,4 +604,8 @@ server.listen(PORT, HOST, () => {
   console.log(`Panel sur http://${HOST}:${PORT}`);
   setupScheduler().catch(e => console.error('[scheduler] init KO', e.message));
   setupCoach().catch(e => console.error('[coach] init KO', e.message));
+  // Nettoyage des générations orphelines (interrompues par un redémarrage) -> marquées échec.
+  dbPatch('videos', 'status=in.(curating,downloading,rendering,uploading)', { status: 'failed', error: 'interrompu par un redémarrage du serveur' })
+    .then(r => { if (r?.length) console.log(`[cleanup] ${r.length} génération(s) orpheline(s) marquée(s) échec`); })
+    .catch(() => {});
 });

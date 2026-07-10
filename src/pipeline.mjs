@@ -3,13 +3,13 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { dbSelect, dbInsert, dbPatch, storageSign } from './services/supabase.mjs';
+import { dbSelect, dbInsert, dbPatch, dbDelete, storageSign } from './services/supabase.mjs';
 import { curatePlaylist, durationSec } from './steps/curate.mjs';
 import { downloadAll } from './steps/download.mjs';
 import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground, renderThumbnail } from './services/ffmpeg.mjs';
 import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
-import { uploadVideo, setPrivacyStatus, setThumbnail } from './services/youtube.mjs';
+import { uploadVideo, setPrivacyStatus, setThumbnail, deleteVideo } from './services/youtube.mjs';
 import { getActiveChannel, updateChannel } from './services/channels.mjs';
 import { chooseEmotionIndex } from './steps/coach.mjs';
 import { sendDiscord, COLORS } from './services/notify.mjs';
@@ -25,7 +25,8 @@ async function fetchAssetFile(asset, dir) {
   return { path, isVideo: (asset.mime_type || '').startsWith('video') };
 }
 
-export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log = () => {} } = {}) {
+export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, controller, log = () => {} } = {}) {
+  const ck = () => { if (controller?.cancelled) throw new Error('cancelled'); }; // point d'annulation entre étapes
   const channel = await getActiveChannel();
   const chanFilter = channel ? `&channel_id=eq.${channel.id}` : '';
   const references = await dbSelect('reference_songs', '?active=eq.true' + chanFilter);
@@ -62,6 +63,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
 
   const workDir = join(tmpdir(), 'abm-' + vid);
   mkdirSync(workDir, { recursive: true });
+  let youtubeId = null, youtubeUrl = null; // hoisté pour le nettoyage en cas d'annulation
 
   try {
     // 1. Curation
@@ -69,22 +71,24 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     if (emotion) await logStep('emotion', 'ok', emotion.name);
     const curation = await curatePlaylist({
       references: references.map(r => ({ spotify_url: r.spotify_url, title: r.title, mood_tags: r.mood_tags })),
-      targetSec: target, moodHint: mood, emotion, log
+      targetSec: target, moodHint: mood, emotion, controller, log
     });
     const { tracks, totalSec } = curation;
     if (!tracks.length) throw new Error('curation vide (aucune chanson de référence exploitable)');
     await logStep('curate', 'ok', `${tracks.length} morceaux, ${Math.round(totalSec / 60)} min`);
+    ck();
 
     // 2. Download
     await setStatus('downloading');
     await logStep('download', 'start');
-    const withPaths = await downloadAll(tracks, join(workDir, 'audio'), log);
+    const withPaths = await downloadAll(tracks, join(workDir, 'audio'), log, controller);
     await logStep('download', 'ok');
+    ck();
 
     // 3. Montage
     await setStatus('rendering');
     await logStep('render', 'start');
-    const audioPath = concatAudio(withPaths.map(t => t.path), join(workDir, 'mix.mp3'));
+    const audioPath = await concatAudio(withPaths.map(t => t.path), join(workDir, 'mix.mp3'), { controller });
     const tracklist = buildTracklist(withPaths);
 
     // Sélection des fonds : jamais réutilisés avant `reuse_gap` vidéos ; mode single/diaporama configurable.
@@ -109,14 +113,16 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     const ads = [];
     for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
     const outPath = join(workDir, 'video.mp4');
-    renderVideo({
-      backgrounds, ads, audioPath, outPath, log,
+    ck();
+    await renderVideo({
+      backgrounds, ads, audioPath, outPath, log, controller,
       adFrequencyMin: channel?.ad_frequency_min ?? 10,
       adDurationSec: channel?.ad_duration_sec ?? 8,
       adIntro: channel?.ad_intro !== false,
       adOutro: channel?.ad_outro !== false,
       placement: channel?.ad_placement
     });
+    ck();
     const durSec = Math.round(probeDuration(outPath));
     await logStep('render', 'ok', `${Math.round(durSec / 60)} min · fonds:${backgrounds.length} · pubs:${ads.length}`);
 
@@ -148,8 +154,8 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     });
     await logStep('metadata', 'ok', meta.title);
 
-    // 6. Upload YouTube (brouillon prive)
-    let youtubeId = null, youtubeUrl = null;
+    // 6. Upload YouTube (brouillon prive) — dernier point d'annulation (après, la vidéo est en ligne).
+    ck();
     if (!dryRun) {
       await setStatus('uploading');
       await logStep('upload', 'start');
@@ -208,9 +214,17 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     }
     return { videoId: vid, youtubeId, title: meta.title, status: finalStatus };
   } catch (e) {
-    await setStatus('failed', { error: String(e.message || e) }).catch(() => {});
-    await logStep('error', 'fail', String(e.message || e));
-    if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '❌ Échec de génération vidéo', description: String(e.message || e).slice(0, 800), color: COLORS.error }).catch(() => {});
+    const cancelled = controller?.cancelled || /cancel/i.test(String(e.message || e));
+    if (cancelled) {
+      // Annulation demandée : on nettoie sans alerter comme un échec. Retire la vidéo YouTube si déjà uploadée.
+      if (youtubeId) { await deleteVideo(youtubeId).catch(() => {}); }
+      await dbDelete('videos', `id=eq.${vid}`).catch(() => setStatus('cancelled').catch(() => {}));
+      await logStep('cancelled', 'ok', 'génération annulée par l\'utilisateur').catch(() => {});
+    } else {
+      await setStatus('failed', { error: String(e.message || e) }).catch(() => {});
+      await logStep('error', 'fail', String(e.message || e));
+      if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '❌ Échec de génération vidéo', description: String(e.message || e).slice(0, 800), color: COLORS.error }).catch(() => {});
+    }
     throw e;
   } finally {
     try { rmSync(workDir, { recursive: true, force: true }); } catch {}

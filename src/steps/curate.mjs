@@ -66,7 +66,8 @@ function shuffle(arr) {
 }
 
 // vocalsOverride: 'instrumental' | 'vocal' | 'mixed' | undefined (undefined = Claude décide, adaptatif)
-export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, emotion, log = () => {} }) {
+export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, emotion, controller, log = () => {} }) {
+  const ck = () => { if (controller?.cancelled) throw new Error('cancelled'); };
   // Si une émotion pilote la vidéo, elle devient le contexte prioritaire de la curation.
   const hint = emotion ? `${emotion.name} — ${emotion.description}` : moodHint;
   const analysis = await analyzeReferences(references, hint);
@@ -90,14 +91,15 @@ export async function curatePlaylist({ references = [], targetSec = 5400, vocals
   const pool = new Map();
   const add = list => { for (const r of list) pool.set(r.id, r); };
 
-  for (const a of angles) add(await searchTerm(a, filter, 10));
+  for (const a of angles) { ck(); add(await searchTerm(a, filter, 10)); }
   for (const ref of references) {
+    ck();
     const sid = spotifyTrackId(ref.spotify_url);
     if (sid) add(await searchExternal(sid, filter, 15));
     for (const m of (ref.mood_tags || [])) add(await searchTerm(m, filter, 8));
   }
   log('pool après recherches : ' + pool.size);
-  for (const seed of shuffle([...pool.values()]).slice(0, 6)) add(await similarTo(seed.id, 8));
+  for (const seed of shuffle([...pool.values()]).slice(0, 6)) { ck(); add(await similarTo(seed.id, 8)); }
   log('pool après similaires : ' + pool.size);
 
   const shuffled = shuffle([...pool.values()]);

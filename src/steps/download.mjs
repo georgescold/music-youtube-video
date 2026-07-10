@@ -13,14 +13,15 @@ export async function downloadTrack(recording, dir) {
   return path;
 }
 
-export async function downloadAll(recordings, dir, log = () => {}) {
+export async function downloadAll(recordings, dir, log = () => {}, controller = null) {
   mkdirSync(dir, { recursive: true });
   const out = [];
   for (let i = 0; i < recordings.length; i++) {
+    if (controller?.cancelled) throw new Error('cancelled'); // annulation entre deux morceaux
     const rec = recordings[i];
     const path = await downloadTrack(rec, dir);
     out.push({ ...rec, path });
-    log(`download ${i + 1}/${recordings.length} : ${rec.title}`);
+    log(`téléchargement ${i + 1}/${recordings.length} : ${rec.title}`);
   }
   return out;
 }

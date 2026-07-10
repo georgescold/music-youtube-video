@@ -1,7 +1,7 @@
 // Montage FFmpeg. Deux notions distinctes :
 //  - FONDS (backgrounds) : image(s) ou vidéo. Plusieurs images -> réparties équitablement (slideshow équilibré).
 //  - PUBS (ads) : image/animation/vidéo superposées à des moments précis (intro, outro + fréquence réglable).
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,10 +21,26 @@ export function probeDuration(path) {
   return parseFloat(out) || 0;
 }
 
-export function concatAudio(trackPaths, outPath) {
+// Exécution FFmpeg NON bloquante (spawn) + annulable : le child est enregistré dans `controller`
+// pour pouvoir le tuer depuis l'extérieur. Le serveur reste réactif pendant le montage.
+function runFF(args, { controller, label = 'ffmpeg' } = {}) {
+  return new Promise((resolve, reject) => {
+    if (controller?.cancelled) return reject(new Error('cancelled'));
+    const child = spawn(FF, args, { stdio: 'ignore' });
+    if (controller) controller.child = child;
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      if (controller && controller.child === child) controller.child = null;
+      if (signal || controller?.cancelled) return reject(new Error('cancelled'));
+      code === 0 ? resolve() : reject(new Error(`${label} a échoué (code ${code})`));
+    });
+  });
+}
+
+export async function concatAudio(trackPaths, outPath, { controller } = {}) {
   const listPath = outPath + '.list.txt';
   writeFileSync(listPath, trackPaths.map(p => `file '${fwd(p)}'`).join('\n'), 'utf8');
-  execFileSync(FF, ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c:a', 'libmp3lame', '-b:a', '192k', outPath], { stdio: 'ignore' });
+  await runFF(['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c:a', 'libmp3lame', '-b:a', '192k', outPath], { controller, label: 'concat audio' });
   return outPath;
 }
 
@@ -107,7 +123,7 @@ export function adIntervals(durationSec, freqMin, durSec, { intro = true, outro 
 }
 
 // backgrounds: [{ path, isVideo }] · ads: [{ path, isVideo }]
-export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, adIntro = true, adOutro = true, placement, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, log = () => {} }) {
+export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, adIntro = true, adOutro = true, placement, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, controller, log = () => {} }) {
   const D = Math.max(1, Math.round(probeDuration(audioPath)));
   const inputs = [];
   let idx = 0;
@@ -166,7 +182,7 @@ export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, ad
     '-map', `[${vLabel}]`, '-map', `${audioIdx}:a`,
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', outPath];
-  log(`ffmpeg render — fonds:${backgrounds.length} · pubs:${ads.length} · apparitions:${windows.length}`);
-  execFileSync(FF, args, { stdio: 'ignore' });
+  log(`montage FFmpeg — fonds:${backgrounds.length} · pubs:${ads.length} · apparitions:${windows.length} · durée ${Math.round(D / 60)} min`);
+  await runFF(args, { controller, label: 'montage' });
   return { outPath, windows };
 }

@@ -70,6 +70,14 @@
   .yt-link:hover { color: var(--color-ink); }
   .empty { color: var(--color-mut); font-size: 13px; padding: 20px 0; }
   .err { color: #b3413a; }
+  .console { border: 1px solid var(--color-rule); border-radius: 12px; background: var(--color-soft); margin-bottom: 22px; overflow: hidden; }
+  .console-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--color-rule); font-size: 12.5px; font-weight: 700; }
+  .console-log { max-height: 300px; overflow-y: auto; padding: 10px 14px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.75; color: var(--color-mut); }
+  .console-log .l { white-space: pre-wrap; word-break: break-word; }
+  .console-log .l:last-child { color: var(--color-ink); font-weight: 600; }
+  .console-log .t { color: var(--color-mut2); margin-right: 8px; }
+  .btn-cancel { color: #b3413a; }
+  .btn-cancel:hover { border-color: #b3413a; background: #fbf2f1; }
 </style>
 <link rel="stylesheet" href="/theme.css">
 <script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
@@ -100,6 +108,13 @@
     <button class="btn-primary" id="gen">Générer une vidéo</button>
   </div>
   <div class="genbar" id="genbar"></div>
+  <div class="console" id="console" style="display:none">
+    <div class="console-head">
+      <span id="console-title"><span class="dot"></span>Génération en direct</span>
+      <button class="btn-sec btn-cancel" id="cancel" style="display:none">Annuler</button>
+    </div>
+    <div class="console-log" id="console-log"></div>
+  </div>
 
   <div class="list" id="list"></div>
   <div class="empty" id="empty" style="display:none">Aucune vidéo pour l'instant. Clique « Générer une vidéo ».</div>
@@ -118,25 +133,56 @@ let openId = null;
 function fmtDate(s) { return new Date(s).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
 function fmtDur(sec) { if (!sec) return ''; const m = Math.floor(sec / 60), s = sec % 60; return m + ' min ' + String(s).padStart(2, '0'); }
 
+const consoleEl = document.getElementById('console');
+const consoleLog = document.getElementById('console-log');
+const cancelBtn = document.getElementById('cancel');
+let logCount = 0, polling = false;
+
 genBtn.onclick = async () => {
   genBtn.disabled = true;
-  const r = await fetch('/api/videos/generate', { method: 'POST' });
-  const d = await r.json();
+  const d = await (await fetch('/api/videos/generate', { method: 'POST' })).json();
   if (!d.ok) { genbar.className = 'genbar err'; genbar.textContent = d.error; genBtn.disabled = false; return; }
-  pollStatus();
+  startStreaming();
 };
 
+cancelBtn.onclick = async () => {
+  cancelBtn.disabled = true; cancelBtn.textContent = 'Annulation…';
+  await fetch('/api/videos/generate/cancel', { method: 'POST' }).catch(() => {});
+};
+
+function appendLogs(lines) {
+  for (const ln of lines) {
+    const div = document.createElement('div'); div.className = 'l';
+    const time = new Date(ln.t).toLocaleTimeString('fr-FR');
+    div.innerHTML = '<span class="t">' + time + '</span>' + ln.m.replace(/</g, '&lt;');
+    consoleLog.appendChild(div);
+  }
+  if (lines.length) consoleLog.scrollTop = consoleLog.scrollHeight;
+}
+
+function startStreaming() {
+  logCount = 0; consoleLog.innerHTML = ''; consoleEl.style.display = 'block';
+  if (!polling) { polling = true; pollStatus(); }
+}
+
 async function pollStatus() {
-  const s = await (await fetch('/api/videos/status')).json();
+  let s;
+  try { s = await (await fetch('/api/videos/status?since=' + logCount)).json(); }
+  catch (e) { setTimeout(pollStatus, 2000); return; }
+  if (s.log && s.log.length) { appendLogs(s.log); logCount = s.total; }
   if (s.running) {
     genBtn.disabled = true;
+    cancelBtn.style.display = ''; cancelBtn.disabled = false;
     genbar.className = 'genbar active';
-    genbar.innerHTML = '<span class="dot"></span>Génération en cours — ' + (s.phase || '…');
-    setTimeout(pollStatus, 2000);
+    genbar.innerHTML = '<span class="dot"></span>' + (s.phase || '…');
     load();
+    setTimeout(pollStatus, 1500);
   } else {
+    polling = false;
     genBtn.disabled = false;
-    if (s.error) { genbar.className = 'genbar err'; genbar.textContent = 'Échec : ' + s.error; }
+    cancelBtn.style.display = 'none';
+    if (s.cancelled) { genbar.className = 'genbar'; genbar.textContent = 'Génération annulée.'; }
+    else if (s.error) { genbar.className = 'genbar err'; genbar.textContent = 'Échec : ' + s.error; }
     else if (s.phase === 'terminé') { genbar.className = 'genbar'; genbar.textContent = 'Vidéo générée — à valider ci-dessous.'; }
     else genbar.textContent = '';
     load();
@@ -204,7 +250,10 @@ async function load() {
   }
 }
 load();
-pollStatus();
+// Au chargement : reprend le direct uniquement si une génération est en cours (évite d'afficher un vieux journal).
+(async () => {
+  try { const s = await (await fetch('/api/videos/status?since=0')).json(); if (s.running) startStreaming(); } catch (e) {}
+})();
 </script>
 <script src="/theme.js"></script>
 </body>
