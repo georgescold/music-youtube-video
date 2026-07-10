@@ -114,6 +114,16 @@
     <div id="emotions-view" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
 
+  <h2>Plan SEO</h2>
+  <div class="card">
+    <p class="hint" style="margin:-2px 0 14px">Stratégie de référencement durable pour cette chaîne : piliers de contenu, mots-clés, vivier de hashtags (pour <b>varier</b> d'une vidéo à l'autre), conventions de titres et idées de CTA. Nourri par ton contexte + tes chaînes modèles.</p>
+    <div class="card-head">
+      <div><div class="card-title" style="font-size:13px">Plan</div><div class="card-desc" id="seo-meta">Aucun plan. Renseigne objectif/produit + chaînes modèles, puis génère.</div></div>
+      <button class="btn btn-sec" id="seo-btn" type="button">Générer</button>
+    </div>
+    <div id="seo-view" style="font-size:12.5px;color:var(--color-mut);white-space:pre-wrap;margin-top:8px"></div>
+  </div>
+
   <h2>YouTube</h2>
   <div class="card">
     <div class="card-head"><span class="card-title">Compte YouTube (upload)</span><button class="btn btn-sec" data-test="youtube">Tester</button></div>
@@ -282,6 +292,7 @@ async function loadSettings() {
   $('f-affiliate_label').value = st.affiliate_label || '';
   renderPlaybook(st.playbook, st.playbook_updated_at);
   renderEmotions(s.emotions);
+  renderSeo(s.seo_plan, s.seo_plan_updated_at);
   $('f-cron_enabled').checked = !!s.cron_enabled;
   $('f-thumbnail_enabled').checked = s.thumbnail_enabled !== false;
   $('f-thumbnail_text').checked = s.thumbnail_text !== false;
@@ -367,6 +378,34 @@ function renderEmotions(em) {
     view.appendChild(chip);
   });
 }
+
+function renderSeo(plan, updatedAt) {
+  const meta = $('seo-meta'), view = $('seo-view');
+  if (!plan) { view.textContent = ''; return; }
+  meta.textContent = 'Généré' + (updatedAt ? ' le ' + new Date(updatedAt).toLocaleDateString('fr-FR') : '') + ' · ' + (plan.hashtag_pool || []).length + ' hashtags en vivier';
+  const sec = (t, arr) => (arr && arr.length) ? '▸ ' + t + '\n' + arr.map(x => '   • ' + x).join('\n') + '\n\n' : '';
+  view.textContent =
+    (plan.niche_summary ? plan.niche_summary + '\n\n' : '') +
+    sec('Piliers', plan.pillars) +
+    sec('Mots-clés principaux', plan.primary_keywords) +
+    sec('Longue traîne', (plan.secondary_keywords || []).slice(0, 12)) +
+    sec('Hashtags identitaires', plan.core_hashtags) +
+    sec('Vivier de hashtags', (plan.hashtag_pool || []).slice(0, 24)) +
+    sec('Conventions de titres', plan.title_conventions) +
+    sec('Idées de CTA', plan.cta_ideas) +
+    (plan.internal_linking ? '▸ Maillage interne\n   ' + plan.internal_linking : '');
+}
+
+$('seo-btn').onclick = async () => {
+  const btn = $('seo-btn'), meta = $('seo-meta');
+  btn.disabled = true; meta.textContent = 'Conception du plan SEO (analyse + synthèse Claude)…';
+  try {
+    const d = await (await fetch('/api/settings/generate-seo-plan', { method: 'POST' })).json();
+    if (d.ok) renderSeo(d.plan, new Date().toISOString());
+    else meta.textContent = 'Échec : ' + (d.error || 'inconnu');
+  } catch (e) { meta.textContent = 'Erreur réseau'; }
+  btn.disabled = false;
+};
 
 $('derive-emotions-btn').onclick = async () => {
   const btn = $('derive-emotions-btn'), meta = $('emotions-meta');

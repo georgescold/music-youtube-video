@@ -11,23 +11,46 @@ const TITLE_SEEDS = [
   "Écoute ça quand tout va bien et que tu es amoureux"
 ];
 
+// Retire la balise [Playlist] d'un titre (pour les liens internes lisibles).
+function stripTag(t) { return String(t || '').replace(/\[\s*playlist\s*\]/ig, '').replace(/\s{2,}/g, ' ').trim(); }
+
 // Normalise un titre pour comparer (minuscules, sans ponctuation ni espaces multiples).
 function normTitle(t) {
   return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, channelHandle = '', channelName = '', log = () => {} }) {
+// Choisit 3-5 hashtags variés : les hashtags identitaires + un tirage du vivier en évitant les récents.
+function pickHashtags(plan, recentHashtags = [], count = 5) {
+  const norm = h => String(h).replace(/^#/, '').trim();
+  const core = [...new Set((plan?.core_hashtags || []).map(norm))].filter(Boolean).slice(0, 2);
+  const pool = [...new Set((plan?.hashtag_pool || []).map(norm))].filter(h => h && !core.includes(h));
+  if (!pool.length) return core; // pas de vivier -> on laissera Claude compléter en amont
+  const recent = new Set(recentHashtags.map(norm));
+  const fresh = pool.filter(h => !recent.has(h));
+  const bag = fresh.length >= (count - core.length) ? fresh : pool; // si trop peu de "frais", on rouvre tout le vivier
+  // Mélange déterministe simple (pas de Math.random pour rester lisible) puis on complète.
+  const shuffled = bag.map((h, i) => ({ h, k: (i * 2654435761) % bag.length })).sort((a, b) => a.k - b.k).map(x => x.h);
+  const picked = [...core];
+  for (const h of shuffled) { if (picked.length >= count) break; if (!picked.includes(h)) picked.push(h); }
+  return picked;
+}
+
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, seoPlan = null, recentHashtags = [], internalLinks = [], channelHandle = '', channelName = '', log = () => {} }) {
   const pb = strategy.playbook || {};
+  const plan = seoPlan || {};
   // Contexte SEO adaptatif : le domaine/ton vient de la chaîne (objectif + produit), pas d'un thème présupposé.
   const hasContext = !!(strategy.objective || strategy.product_desc || pb.title_patterns?.length);
   const contextLine = (strategy.objective || strategy.product_desc)
     ? 'CONTEXTE DE LA CHAÎNE : ' + [strategy.objective, strategy.product_desc && ('Produit promu : ' + strategy.product_desc)].filter(Boolean).join(' — ')
     : "CONTEXTE PAR DÉFAUT (aucun renseigné) : chaîne de playlists de musique d'amour francophone.";
   const system = [
-    "Tu es un expert du SEO YouTube pour les chaînes de playlists.",
+    "Tu es un expert du SEO YouTube pour les chaînes de playlists (viralité + conversion, pratiques 2026).",
     contextLine,
     "SEO ADAPTATIF : cale le TON, le champ lexical, les mots-clés, hashtags et tags sur LE DOMAINE, l'objectif ET LA LANGUE de cette chaîne. Ne présuppose aucun thème générique.",
+    plan.primary_keywords?.length ? 'Mots-clés PRINCIPaux du plan SEO (à privilégier) : ' + plan.primary_keywords.join(', ') : '',
+    plan.pillars?.length ? 'Piliers de contenu de la chaîne : ' + plan.pillars.join(' · ') : '',
+    "Le HOOK (1re phrase de la description) doit contenir le mot-clé principal DÈS LES 40 PREMIERS CARACTÈRES (avant la troncature mobile).",
     "Format de titre performant : titre émotionnel à la 2e personne (« POV : ... » ou scénario intime), avec la balise [Playlist]. Le plus deep et émotionnel possible, TOUJOURS différent des titres déjà publiés.",
     emotion ? `ÉMOTION IMPOSÉE de cette vidéo : « ${emotion.name} » (${emotion.description}). Le titre DOIT capturer PRÉCISÉMENT cette émotion, pas une autre.` : '',
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."
@@ -63,36 +86,42 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     meta = extractJson(await askClaude(system, buildUser(extraAvoid), 'sonnet'));
   }
 
-  const tracklistText = tracklist.map(l => `${l.stamp} ${l.title}${l.artist ? ' — ' + l.artist : ''}`).join('\n');
-  // Lien mis en avant : lien d'affiliation de la chaîne si fourni, sinon le lien Compaatible (UTM).
+  // Chapitres YouTube : 1re entrée forcée à 0:00 (règle YouTube), titres descriptifs -> +watch time, ranking multi-requêtes.
+  const chapters = tracklist.map((l, i) => `${i === 0 ? '0:00' : l.stamp} ${l.title}${l.artist ? ' — ' + l.artist : ''}`).join('\n');
+
+  // CTA conversion : lien d'affiliation de la chaîne si fourni, sinon le lien Compaatible (UTM).
   const ctaUrl = strategy.affiliate_url || utmUrl || '';
   const ctaLabel = strategy.affiliate_label || 'Test de compatibilité gratuit';
   const productLine = strategy.product_desc || 'Cette playlist t\'est proposée par Compaatible, l\'app qui trouve les gens vraiment faits pour toi.';
-  const compaatibleBlock = [
-    '━━━━━━━━━━━━━━━━━━',
-    '💞 ' + productLine,
-    '👉 ' + ctaLabel + ' : ' + ctaUrl,
-    '━━━━━━━━━━━━━━━━━━'
-  ].join('\n');
+  const ctaBlock = ['━━━━━━━━━━━━━━━━━━', '💞 ' + productLine, '👉 ' + ctaLabel + ' : ' + ctaUrl, '━━━━━━━━━━━━━━━━━━'].join('\n');
 
-  const description = [
-    meta.hook,
-    '',
-    compaatibleBlock,
-    '',
-    'Tracklist :',
-    tracklistText,
-    '',
-    'Mots-clés : ' + (meta.keywords || []).join(', '),
-    '',
-    (meta.hashtags || []).map(h => '#' + String(h).replace(/^#/, '')).join(' '),
-    '',
-    '🎵 Musique sous licence Epidemic Sound.' + (channelHandle ? ' Chaîne : ' + channelHandle : (channelName ? ' Chaîne : ' + channelName : ''))
-  ].join('\n');
+  // Maillage interne : liens vers d'autres vidéos de la chaîne -> temps de session, découverte croisée.
+  const links = (internalLinks || []).filter(v => v && v.url && v.title).slice(0, 3);
+  const internalBlock = links.length
+    ? '🎧 À écouter aussi :\n' + links.map(v => '• ' + stripTag(v.title) + ' : ' + v.url).join('\n')
+    : '';
+
+  // Hashtags : rotation depuis le vivier du plan (variété) ; sinon ceux de Claude.
+  const planTags = pickHashtags(plan, recentHashtags, 5);
+  const hashtags = (planTags.length ? planTags : (meta.hashtags || []).map(h => String(h).replace(/^#/, '')).slice(0, 5)).filter(Boolean);
+
+  const parts = [
+    meta.hook,          // mot-clé principal en tête (avant troncature mobile)
+    '', ctaBlock,       // conversion, haut de description
+    '', 'CHAPITRES', chapters
+  ];
+  if (internalBlock) parts.push('', internalBlock);
+  parts.push(
+    '', 'Mots-clés : ' + (meta.keywords || []).join(', '),
+    '', hashtags.map(h => '#' + h).join(' '),
+    '', '🎵 Musique sous licence Epidemic Sound.' + (channelHandle ? ' Chaîne : ' + channelHandle : (channelName ? ' Chaîne : ' + channelName : ''))
+  );
+  const description = parts.join('\n');
 
   return {
-    title: String(meta.title || 'Playlist musique d\'amour [Playlist]').slice(0, 100),
+    title: String(meta.title || 'Playlist [Playlist]').slice(0, 100),
     description: description.slice(0, 4900),
-    tags: (meta.tags || []).slice(0, 15)
+    tags: (meta.tags || []).slice(0, 15),
+    hashtags
   };
 }

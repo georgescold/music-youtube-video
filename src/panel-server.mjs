@@ -14,6 +14,7 @@ import { listChannels, getActiveChannel, createChannel, setActiveChannel, update
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
 import { deriveEmotions } from './steps/emotions.mjs';
+import { generateSeoPlan } from './steps/seoPlan.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -456,6 +457,18 @@ const server = http.createServer(async (req, res) => {
       if (!r.ok) return json(res, { ok: false, error: r.error });
       const updated = await updateChannel(ch.id, { playbook: r.playbook, playbook_updated_at: new Date().toISOString() });
       return json(res, { ok: true, playbook: r.playbook, errors: r.errors || [], channel: channelPublicView(updated) });
+    }
+    // Génère le plan SEO durable de la chaîne (piliers, mots-clés, vivier de hashtags, CTA…).
+    if (req.method === 'POST' && path === '/api/settings/generate-seo-plan') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { ok: false, error: 'aucune chaîne active' });
+      const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
+      const refs = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title`).catch(() => []);
+      const token = channelCreds(ch).claudeToken;
+      const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', inspirationUrls: urls, references: refs, token, log: m => console.log('[seo]', m) });
+      if (!r.ok) return json(res, { ok: false, error: r.error });
+      const updated = await updateChannel(ch.id, { seo_plan: r.plan, seo_plan_updated_at: new Date().toISOString() });
+      return json(res, { ok: true, plan: r.plan, channel: channelPublicView(updated) });
     }
     // Dérive la palette d'émotions depuis les chaînes modèles + les chansons de référence.
     if (req.method === 'POST' && path === '/api/settings/derive-emotions') {

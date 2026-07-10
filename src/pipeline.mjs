@@ -129,15 +129,21 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     await logStep('metadata', 'start');
     const utmBase = channel?.utm_base || 'https://compaatible.app/';
     const utmUrl = utmBase + (utmBase.includes('?') ? '&' : '?') + 'utm_source=youtube&utm_campaign=aubonmoment&utm_content=' + vid;
-    // Titres déjà utilisés sur la chaîne -> jamais réutiliser le même.
-    const prior = await dbSelect('videos', `?title=not.is.null${chanFilter}&select=title&order=created_at.desc&limit=200`).catch(() => []);
+    // Historique de la chaîne : titres (dédup), liens internes (maillage), hashtags récents (rotation).
+    const prior = await dbSelect('videos', `?title=not.is.null${chanFilter}&select=title,youtube_url,hashtags&order=created_at.desc&limit=200`).catch(() => []);
     const avoidTitles = prior.map(v => v.title).filter(Boolean);
+    const internalLinks = prior.filter(v => v.youtube_url).slice(0, 3).map(v => ({ title: v.title, url: v.youtube_url }));
+    const recentHashtags = prior.slice(0, 6).flatMap(v => Array.isArray(v.hashtags) ? v.hashtags : []);
     const strategy = {
       objective: channel?.objective, product_desc: channel?.product_desc,
       affiliate_url: channel?.affiliate_url, affiliate_label: channel?.affiliate_label,
       playbook: channel?.playbook
     };
-    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, strategy, emotion, channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', log });
+    const meta = await generateMetadata({
+      tracklist, mood, utmUrl, avoidTitles, strategy, emotion,
+      seoPlan: channel?.seo_plan || null, recentHashtags, internalLinks,
+      channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', log
+    });
     await logStep('metadata', 'ok', meta.title);
 
     // 6. Upload YouTube (brouillon prive)
@@ -181,7 +187,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     }
 
     await setStatus(finalStatus, {
-      title: meta.title, description: meta.description, tags: meta.tags,
+      title: meta.title, description: meta.description, tags: meta.tags, hashtags: meta.hashtags || [],
       duration_sec: durSec, utm_url: utmUrl, theme: curation.understanding || mood,
       youtube_video_id: youtubeId, youtube_url: youtubeUrl, thumbnail_url: thumbnailUrl,
       background_asset: chosenBgAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null,
