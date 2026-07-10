@@ -46,8 +46,8 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     // 1. Curation
     await logStep('curate', 'start');
     const { tracks, totalSec } = await curatePlaylist({
-      references: references.map(r => ({ spotify_url: r.spotify_url, mood_tags: r.mood_tags })),
-      targetSec: target, vocals: false, log
+      references: references.map(r => ({ spotify_url: r.spotify_url, title: r.title, mood_tags: r.mood_tags })),
+      targetSec: target, vocals: false, moodHint: mood, log
     });
     if (!tracks.length) throw new Error('curation vide (aucune chanson de référence exploitable)');
     await logStep('curate', 'ok', `${tracks.length} morceaux, ${Math.round(totalSec / 60)} min`);
