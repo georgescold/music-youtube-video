@@ -19,3 +19,18 @@
 
 /* Bouton bascule de thème (réutilise .btn-ghost des pages). */
 .theme-toggle { cursor: pointer; line-height: 1; padding: 6px 11px; font-size: 14px; }
+
+/* Le titre du header ne passe jamais à la ligne, même avec le sélecteur de chaîne. */
+.brand { white-space: nowrap; }
+
+/* Sélecteur de chaîne dans le header (partagé). */
+.chan-switch {
+  font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--color-ink);
+  background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 100px;
+  padding: 6px 28px 6px 12px; cursor: pointer; outline: none; max-width: 170px; text-overflow: ellipsis;
+  -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236e6a62' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right 11px center;
+}
+.chan-switch:hover { border-color: var(--color-ink); }
+:root[data-theme="dark"] .chan-switch { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaaaaa' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>"); }
