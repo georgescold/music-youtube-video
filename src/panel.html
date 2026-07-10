@@ -128,7 +128,7 @@
   </div>
   <div class="progress" id="progress"></div>
 
-  <h2>Assets déposés</h2>
+  <h2 id="listTitle">Assets déposés</h2>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" style="display:none">Aucun asset pour l'instant.</div>
 </div>
@@ -180,6 +180,7 @@ dz.onclick = () => fileInput.click();
 ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
 dz.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) upload(f); });
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) upload(fileInput.files[0]); });
+document.querySelectorAll('input[name="kind"]').forEach(r => r.addEventListener('change', renderList));
 
 async function upload(file) {
   const kind = document.querySelector('input[name="kind"]:checked').value;
@@ -207,11 +208,29 @@ const KIND_LABEL = { background: 'Fond', ad: 'Publicité', other: 'Autre', ad_ba
 function fmtSize(b) { if (!b) return '—'; const u = ['o', 'Ko', 'Mo', 'Go']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return b.toFixed(1) + ' ' + u[i]; }
 function fmtDate(s) { return new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }); }
 
+// Ramène les anciens libellés vers 3 catégories : background / ad / other.
+function normKind(k) {
+  if (String(k).startsWith('background')) return 'background';
+  if (String(k).startsWith('ad')) return 'ad';
+  return 'other';
+}
+function currentKind() { return document.querySelector('input[name="kind"]:checked').value; }
+
+let allAssets = [];
 async function load() {
-  const rows = await (await fetch('/api/assets')).json();
-  bgPreviewUrl = (rows.find(a => a.kind === 'background' && a.url && (a.mime_type || '').startsWith('image')) || {}).url || '';
+  allAssets = await (await fetch('/api/assets')).json();
+  bgPreviewUrl = (allAssets.find(a => normKind(a.kind) === 'background' && a.url && (a.mime_type || '').startsWith('image')) || {}).url || '';
+  renderList();
+}
+
+const KIND_TITLE = { background: 'Fonds', ad: 'Publicités', other: 'Autres' };
+function renderList() {
+  const kind = currentKind();
+  const rows = allAssets.filter(a => normKind(a.kind) === kind);
+  document.getElementById('listTitle').textContent = KIND_TITLE[kind] + ' déposé' + (kind === 'ad' ? 'es' : 's') + ' (' + rows.length + ')';
   grid.innerHTML = '';
   empty.style.display = rows.length ? 'none' : 'block';
+  empty.textContent = allAssets.length ? 'Aucun asset dans cette catégorie.' : "Aucun asset pour l'instant.";
   for (const a of rows) {
     const div = document.createElement('div');
     div.className = 'asset';
