@@ -481,6 +481,7 @@ const server = http.createServer(async (req, res) => {
         if (!title) return json(res, { ok: false, error: 'nom introuvable côté YouTube' });
         const patch = { name: title };
         if (yt.id && yt.id !== ch.yt_channel_id) patch.yt_channel_id = yt.id;
+        if (yt.snippet?.customUrl) patch.yt_handle = yt.snippet.customUrl; // ex : "@au-bon-moment"
         const updated = await updateChannel(ch.id, patch);
         return json(res, { ok: true, name: title, channel: channelPublicView(updated) });
       } catch (e) { return json(res, { ok: false, error: e.message }); }

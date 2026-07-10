@@ -17,7 +17,7 @@ function normTitle(t) {
     .replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, log = () => {} }) {
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, channelHandle = '', channelName = '', log = () => {} }) {
   const pb = strategy.playbook || {};
   const system = [
     "Tu es un expert du SEO YouTube pour les chaînes de playlists de musique d'amour francophones.",
@@ -83,7 +83,7 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     '',
     (meta.hashtags || []).map(h => '#' + String(h).replace(/^#/, '')).join(' '),
     '',
-    '🎵 Musique sous licence Epidemic Sound. Chaîne : @AuBonMomentMusic'
+    '🎵 Musique sous licence Epidemic Sound.' + (channelHandle ? ' Chaîne : ' + channelHandle : (channelName ? ' Chaîne : ' + channelName : ''))
   ].join('\n');
 
   return {

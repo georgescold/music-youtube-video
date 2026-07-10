@@ -137,7 +137,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
       affiliate_url: channel?.affiliate_url, affiliate_label: channel?.affiliate_label,
       playbook: channel?.playbook
     };
-    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, strategy, emotion, log });
+    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, strategy, emotion, channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', log });
     await logStep('metadata', 'ok', meta.title);
 
     // 6. Upload YouTube (brouillon prive)
