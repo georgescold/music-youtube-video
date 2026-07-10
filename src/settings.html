@@ -175,9 +175,23 @@
     <div class="field" style="margin-top:4px">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px;font-weight:600;color:var(--color-ink)">
         <input type="checkbox" id="f-thumbnail_enabled" style="width:16px;height:16px;cursor:pointer">
-        Générer la miniature (titre en texte sur l'image de fond)
+        Générer la miniature depuis une image de fond
       </label>
-      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">La miniature reprend une image de fond de la vidéo avec le titre écrit dessus (sans la balise [Playlist]), puis est envoyée sur YouTube. Décoche pour laisser YouTube choisir une image.</div>
+      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">La miniature reprend une image de fond de la vidéo, puis est envoyée sur YouTube. Décoche pour laisser YouTube choisir une image.</div>
+    </div>
+    <div id="thumb-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:10px 0 0 3px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13.5px;font-weight:600;color:var(--color-ink)">
+        <input type="checkbox" id="f-thumbnail_text" style="width:16px;height:16px;cursor:pointer">
+        Écrire le titre sur la miniature
+      </label>
+      <div style="font-size:11.5px;color:var(--color-mut2);margin:5px 0 12px">Le titre (sans la balise [Playlist]) est écrit centré sur l'image. Décoche pour garder l'image seule, sans texte.</div>
+      <div class="field" id="thumb-font-wrap" style="max-width:320px;margin:0"><label>Police du titre</label>
+        <select id="f-thumbnail_font" style="width:100%">
+          <option value="playfair">Playfair Display — serif élégant (Compaatible)</option>
+          <option value="cormorant">Cormorant Garamond — serif délicat (Compaatible)</option>
+          <option value="inter">Inter — sans-serif moderne (Compaatible)</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -260,6 +274,9 @@ async function loadSettings() {
   renderPlaybook(st.playbook, st.playbook_updated_at);
   $('f-cron_enabled').checked = !!s.cron_enabled;
   $('f-thumbnail_enabled').checked = s.thumbnail_enabled !== false;
+  $('f-thumbnail_text').checked = s.thumbnail_text !== false;
+  $('f-thumbnail_font').value = s.thumbnail_font || 'playfair';
+  syncThumb();
   $('f-publish_mode').value = s.publish_mode || 'review';
   $('f-discord_webhook').placeholder = (s.discord && s.discord.configured) ? '•••• configuré — laisse vide pour ne pas changer' : 'https://discord.com/api/webhooks/…';
 }
@@ -268,6 +285,13 @@ function syncBgMode() {
   $('wrap-slideshow_count').style.display = $('f-background_mode').value === 'single' ? 'none' : '';
 }
 $('f-background_mode').addEventListener('change', syncBgMode);
+
+function syncThumb() {
+  $('thumb-opts').style.display = $('f-thumbnail_enabled').checked ? '' : 'none';
+  $('thumb-font-wrap').style.display = $('f-thumbnail_text').checked ? '' : 'none';
+}
+$('f-thumbnail_enabled').addEventListener('change', syncThumb);
+$('f-thumbnail_text').addEventListener('change', syncThumb);
 
 $('save').onclick = async () => {
   $('save').disabled = true; $('savemsg').textContent = 'Enregistrement…';
@@ -284,6 +308,7 @@ $('save').onclick = async () => {
     affiliate_url: $('f-affiliate_url').value.trim(), affiliate_label: $('f-affiliate_label').value.trim(),
     inspiration_urls: $('f-inspiration_urls').value.split('\n').map(x => x.trim()).filter(Boolean),
     cron_enabled: $('f-cron_enabled').checked, thumbnail_enabled: $('f-thumbnail_enabled').checked,
+    thumbnail_text: $('f-thumbnail_text').checked, thumbnail_font: $('f-thumbnail_font').value,
     publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value
   };
   const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();

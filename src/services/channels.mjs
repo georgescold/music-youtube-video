@@ -26,7 +26,7 @@ export async function setActiveChannel(id) {
 }
 export async function updateChannel(id, patch) {
   const p = {};
-  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'thumbnail_enabled', 'background_mode', 'slideshow_count', 'reuse_gap',
+  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'background_mode', 'slideshow_count', 'reuse_gap',
     'objective', 'product_desc', 'affiliate_url', 'affiliate_label', 'inspiration_urls', 'playbook', 'playbook_updated_at'];
   for (const k of plain) if (k in patch) p[k] = patch[k];
   if (patch.ad_placement && typeof patch.ad_placement === 'object') {
@@ -56,6 +56,8 @@ export function channelPublicView(ch) {
     publish_mode: ch.publish_mode || 'review',
     cron_enabled: !!ch.cron_enabled,
     thumbnail_enabled: ch.thumbnail_enabled !== false,
+    thumbnail_text: ch.thumbnail_text !== false,
+    thumbnail_font: ch.thumbnail_font || 'playfair',
     strategy: {
       objective: ch.objective || '', product_desc: ch.product_desc || '',
       affiliate_url: ch.affiliate_url || '', affiliate_label: ch.affiliate_label || '',

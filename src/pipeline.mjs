@@ -151,7 +151,11 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     if (!dryRun && youtubeId && channel?.thumbnail_enabled !== false && thumbImagePath) {
       try {
         const thumbPath = join(workDir, 'thumbnail.jpg');
-        renderThumbnail({ imagePath: thumbImagePath, title: meta.title, outPath: thumbPath, workDir, log });
+        renderThumbnail({
+          imagePath: thumbImagePath, title: meta.title, outPath: thumbPath, workDir, log,
+          font: channel?.thumbnail_font || 'playfair',
+          withText: channel?.thumbnail_text !== false
+        });
         await setThumbnail(youtubeId, thumbPath);
         thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
         await logStep('thumbnail', 'ok');

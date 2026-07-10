@@ -12,7 +12,9 @@ const fwd = p => String(p).replace(/\\/g, '/');
 // Échappe un chemin pour l'intérieur d'un filtre FFmpeg (slashes + deux-points de lecteur Windows).
 const escFilter = p => fwd(p).replace(/:/g, '\\:');
 const __dirname = dirname(fileURLToPath(import.meta.url)); // src/services
-const FONT_PATH = join(__dirname, '..', 'assets', 'fonts', 'PlayfairDisplay.ttf');
+// Polices embarquées (celles de la marque Compaatible). Clé -> fichier.
+export const THUMB_FONTS = { playfair: 'PlayfairDisplay.ttf', inter: 'Inter.ttf', cormorant: 'CormorantGaramond.ttf' };
+const fontPathFor = key => join(__dirname, '..', 'assets', 'fonts', THUMB_FONTS[key] || THUMB_FONTS.playfair);
 
 export function probeDuration(path) {
   const out = execFileSync(FP, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]).toString().trim();
@@ -55,21 +57,22 @@ function wrapLines(text, maxChars) {
   return lines;
 }
 
-// Génère une miniature 1280x720 : image de fond fournie + titre centré (police embarquée).
-export function renderThumbnail({ imagePath, title, outPath, workDir, fontPath = FONT_PATH, overlay = 0.22, log = () => {} }) {
-  const text = stripPlaylistTag(title) || 'Playlist';
-  const lines = wrapLines(text, 22);
-  const txtFile = join(workDir, 'thumb-text.txt');
-  writeFileSync(txtFile, lines.join('\n'), 'utf8');
-  const fontsize = lines.length >= 3 ? 50 : (lines.length === 2 ? 60 : 66);
-  const vf = [
-    'scale=1280:720:force_original_aspect_ratio=increase',
-    'crop=1280:720',
-    `drawbox=x=0:y=0:w=1280:h=720:color=black@${overlay}:t=fill`,
-    `drawtext=fontfile='${escFilter(fontPath)}':textfile='${escFilter(txtFile)}':fontcolor=white:fontsize=${fontsize}:line_spacing=14:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black@0.65:shadowx=2:shadowy=2`
-  ].join(',');
-  execFileSync(FF, ['-y', '-i', imagePath, '-vf', vf, '-frames:v', '1', '-q:v', '3', outPath], { stdio: 'ignore' });
-  log(`miniature générée (${lines.length} ligne(s))`);
+// Génère une miniature 1280x720 depuis une image fournie.
+// withText=true -> écrit le titre centré (police au choix) ; withText=false -> image seule.
+export function renderThumbnail({ imagePath, title, outPath, workDir, font = 'playfair', withText = true, overlay = 0.22, log = () => {} }) {
+  const parts = ['scale=1280:720:force_original_aspect_ratio=increase', 'crop=1280:720'];
+  let nLines = 0;
+  if (withText) {
+    const text = stripPlaylistTag(title) || 'Playlist';
+    const lines = wrapLines(text, 22); nLines = lines.length;
+    const txtFile = join(workDir, 'thumb-text.txt');
+    writeFileSync(txtFile, lines.join('\n'), 'utf8');
+    const fontsize = lines.length >= 3 ? 50 : (lines.length === 2 ? 60 : 66);
+    parts.push(`drawbox=x=0:y=0:w=1280:h=720:color=black@${overlay}:t=fill`);
+    parts.push(`drawtext=fontfile='${escFilter(fontPathFor(font))}':textfile='${escFilter(txtFile)}':fontcolor=white:fontsize=${fontsize}:line_spacing=14:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black@0.65:shadowx=2:shadowy=2`);
+  }
+  execFileSync(FF, ['-y', '-i', imagePath, '-vf', parts.join(','), '-frames:v', '1', '-q:v', '3', outPath], { stdio: 'ignore' });
+  log(withText ? `miniature générée (${nLines} ligne(s), police ${font})` : 'miniature générée (image seule)');
   return outPath;
 }
 

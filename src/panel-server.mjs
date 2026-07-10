@@ -422,6 +422,8 @@ const server = http.createServer(async (req, res) => {
       if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
+      if (typeof b.thumbnail_text === 'boolean') patch.thumbnail_text = b.thumbnail_text;
+      if (['playfair', 'inter', 'cormorant'].includes(b.thumbnail_font)) patch.thumbnail_font = b.thumbnail_font;
       if (b.background_mode === 'single' || b.background_mode === 'slideshow') patch.background_mode = b.background_mode;
       if (b.slideshow_count != null) patch.slideshow_count = Math.max(0, Math.min(100, Number(b.slideshow_count) || 0));
       if (b.reuse_gap != null) patch.reuse_gap = Math.max(0, Math.min(365, Number(b.reuse_gap) || 0));
