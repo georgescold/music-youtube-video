@@ -13,28 +13,29 @@ export async function analyzeInspiration(urls = [], { token, perChannel = 15, lo
   const corpus = 'Vidéos de référence (triées par vues) :\n' + top.map(v => `- (${v.views || 0} vues) ${v.title}`).join('\n');
 
   const system = [
-    "Tu es analyste SEO/growth pour des chaînes YouTube de playlists musicales.",
+    "Tu es analyste growth YouTube, expert du COPYWRITING de titres qui déclenchent le clic.",
     "On te donne des titres réels de vidéos de référence (avec nombre de vues).",
-    "Tu en extrais des PATTERNS actionnables pour écrire de futurs titres/miniatures performants.",
+    "PRIORITÉ ABSOLUE : décoder les PATTERNS DE TITRES qui fonctionnent, pour pouvoir en produire des nouveaux dans le même esprit.",
+    "Sois chirurgical : structure exacte, ressort psychologique, style d'écriture (casse, ponctuation, longueur, point de vue).",
     "Réponds UNIQUEMENT en JSON valide, en français."
   ].join('\n');
   const user = [
-    'Voici les vidéos récentes des chaînes d\'inspiration (triées par vues) :',
-    '', corpus, '',
-    'Extrais :',
-    '- "title_patterns" : 6-10 formules de titres qui reviennent / marchent (décris la structure, ex : "POV + scénario intime", "chiffre + promesse émotionnelle").',
-    '- "emotional_hooks" : 8-12 déclencheurs émotionnels / mots-clés récurrents.',
-    '- "thumbnail_patterns" : 4-6 observations sur les miniatures probables (ambiance, texte, visages, couleurs) déduites des titres/codes du genre.',
-    '- "do" : 5 conseils concrets à appliquer.',
-    '- "dont" : 4 pièges à éviter (clichés, sur-utilisation).',
-    'Format EXACT : {"title_patterns":["..."],"emotional_hooks":["..."],"thumbnail_patterns":["..."],"do":["..."],"dont":["..."]}'
+    'Vidéos de référence (triées par vues) :', '', corpus, '',
+    'Analyse les TITRES en priorité et extrais :',
+    '- "title_patterns" : 8-12 formules de titres qui marchent. Pour CHACUNE : la structure/formule ET le ressort émotionnel (ex : "confidence à la 1re personne, phrase en suspens avec … qui laisse le manque ouvert", "aveu vulnérable qui met le spectateur à nu").',
+    '- "title_style" : 4-6 règles de STYLE d\'écriture observées (casse ex minuscules, ponctuation ex « … », longueur, 1re/2e personne, langue, ton — brut/poétique).',
+    '- "winning_examples" : 3-5 des MEILLEURS titres réels (les plus vus), recopiés tels quels, comme ancrage de ton.',
+    '- "emotional_hooks" : 8-12 déclencheurs émotionnels / thèmes récurrents.',
+    '- "do" : 4 conseils concrets pour les titres.',
+    '- "dont" : 3 pièges à éviter (clichés, descriptions plates).',
+    'Format EXACT : {"title_patterns":["..."],"title_style":["..."],"winning_examples":["..."],"emotional_hooks":["..."],"do":["..."],"dont":["..."]}'
   ].join('\n');
 
-  log('synthèse des patterns via Claude…');
+  log('décodage des patterns de titres via Claude…');
   const pb = extractJson(await askClaude(system, user, 'sonnet', { token }));
   const playbook = {
-    title_patterns: arr(pb.title_patterns), emotional_hooks: arr(pb.emotional_hooks),
-    thumbnail_patterns: arr(pb.thumbnail_patterns), do: arr(pb.do), dont: arr(pb.dont),
+    title_patterns: arr(pb.title_patterns), title_style: arr(pb.title_style), winning_examples: arr(pb.winning_examples),
+    emotional_hooks: arr(pb.emotional_hooks), do: arr(pb.do), dont: arr(pb.dont),
     sources: { videos: videos.length }
   };
   return { ok: true, playbook };

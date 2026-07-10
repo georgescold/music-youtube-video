@@ -386,9 +386,10 @@ function renderPlaybook(pb, updatedAt) {
   meta.textContent = 'Dernière analyse : ' + (updatedAt ? new Date(updatedAt).toLocaleString('fr-FR') : '—');
   const section = (t, arr) => (arr && arr.length) ? '▸ ' + t + '\n' + arr.map(x => '   • ' + x).join('\n') + '\n\n' : '';
   view.textContent =
-    section('Formules de titres', pb.title_patterns) +
+    section('Formules de titres qui marchent', pb.title_patterns) +
+    section('Style d\'écriture des titres', pb.title_style) +
+    section('Titres gagnants (ancrage)', pb.winning_examples) +
     section('Déclencheurs émotionnels', pb.emotional_hooks) +
-    section('Miniatures', pb.thumbnail_patterns) +
     section('À faire', pb.do) +
     section('À éviter', pb.dont);
 }
