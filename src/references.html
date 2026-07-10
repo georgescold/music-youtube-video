@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chansons de référence — The Playlist Youtube</title>
+<title>Références — The Playlist Youtube</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -60,6 +60,8 @@
     border-radius: 8px; font-size: 13.5px; outline: none; color: var(--color-ink); font-family: var(--font-sans);
   }
   .field input:focus { border-color: var(--color-ink); }
+  .field textarea { width: 100%; padding: 9px 11px; background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; font-size: 13.5px; outline: none; color: var(--color-ink); font-family: var(--font-sans); resize: vertical; line-height: 1.5; }
+  .field textarea:focus { border-color: var(--color-ink); }
   .field-hint { font-size: 11.5px; color: var(--color-mut2); margin-top: 4px; }
   .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
   .form-row .field { flex: 1; min-width: 220px; margin-bottom: 0; }
@@ -98,7 +100,7 @@
       <nav class="nav">
         <a href="/videos">Vidéos</a>
         <a href="/">Assets</a>
-        <a href="/references" class="active">Chansons de référence</a>
+        <a href="/references" class="active">Références</a>
         <a href="/settings">Paramètres</a>
       </nav>
       <button class="btn-ghost theme-toggle" type="button" aria-label="Thème">🌙</button>
@@ -107,9 +109,10 @@
   </div>
 </div>
 <div class="wrap">
-  <h1>Chansons de référence</h1>
-  <p class="page-sub">Colle des liens Spotify pour orienter le style et le mood des playlists générées.</p>
+  <h1>Références</h1>
+  <p class="page-sub">Tes exemples pour cette chaîne : les <b>chansons</b> qui orientent le style/mood, et les <b>chaînes YouTube modèles</b> dont on reprend les codes. Ils nourrissent le playbook des titres et la palette d'émotions.</p>
 
+  <h2 style="margin-top:8px">Chansons de référence</h2>
   <div class="form-card">
     <form id="f">
       <div class="form-row">
@@ -126,10 +129,21 @@
       <div class="form-msg" id="msg"></div>
     </form>
   </div>
-
-  <h2>Références (<span id="count">0</span>)</h2>
   <div class="list" id="list"></div>
-  <div class="empty" id="empty" style="display:none">Aucune chanson de référence pour l'instant.</div>
+  <div class="empty" id="empty" style="display:none;margin-bottom:28px">Aucune chanson de référence pour l'instant.</div>
+
+  <h2 style="margin-top:32px">Chaînes YouTube modèles</h2>
+  <div class="form-card">
+    <div class="field" style="margin-bottom:0">
+      <label>Une URL ou @handle par ligne</label>
+      <textarea id="inspiration_urls" rows="5" placeholder="https://www.youtube.com/@exemple&#10;@autrechaine"></textarea>
+      <div class="field-hint">On analyse leurs titres/miniatures récents pour en tirer les formats qui marchent (playbook) et enrichir la palette d'émotions.</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
+      <button class="btn-primary" id="save-channels" type="button">Enregistrer les chaînes</button>
+      <span class="form-msg" id="chan-msg" style="margin:0"></span>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -144,7 +158,6 @@ const btn = document.getElementById('btn');
 const msg = document.getElementById('msg');
 const list = document.getElementById('list');
 const empty = document.getElementById('empty');
-const count = document.getElementById('count');
 
 f.onsubmit = async (e) => {
   e.preventDefault();
@@ -168,7 +181,6 @@ function fmtDate(s) { return new Date(s).toLocaleDateString('fr-FR', { day: '2-d
 
 async function load() {
   const rows = await (await fetch('/api/references')).json();
-  count.textContent = rows.length;
   list.innerHTML = '';
   empty.style.display = rows.length ? 'none' : 'block';
   for (const r of rows) {
@@ -199,6 +211,28 @@ async function load() {
   }
 }
 load();
+
+// ── Chaînes YouTube modèles (inspiration_urls, partagé avec Paramètres) ──
+const chanMsg = document.getElementById('chan-msg');
+async function loadChannels() {
+  try {
+    const s = await (await fetch('/api/settings')).json();
+    const urls = (s.strategy && s.strategy.inspiration_urls) || [];
+    document.getElementById('inspiration_urls').value = urls.join('\n');
+  } catch (e) {}
+}
+document.getElementById('save-channels').onclick = async () => {
+  const btn = document.getElementById('save-channels');
+  btn.disabled = true; chanMsg.className = 'form-msg'; chanMsg.textContent = 'Enregistrement…';
+  const urls = document.getElementById('inspiration_urls').value.split('\n').map(x => x.trim()).filter(Boolean);
+  try {
+    const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inspiration_urls: urls }) })).json();
+    chanMsg.textContent = d.ok ? 'Enregistré ✓' : ('Erreur : ' + (d.error || ''));
+    if (!d.ok) chanMsg.className = 'form-msg err';
+  } catch (e) { chanMsg.className = 'form-msg err'; chanMsg.textContent = 'Erreur réseau'; }
+  btn.disabled = false;
+};
+loadChannels();
 </script>
 <script src="/theme.js"></script>
 </body>

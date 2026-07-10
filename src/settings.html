@@ -63,7 +63,7 @@
     <span class="brand"><img src="/logo.png" alt="YouTube" style="height:18px;vertical-align:-3px;margin-right:8px">The Playlist Youtube</span>
     <div class="topbar-right">
       <nav class="nav">
-        <a href="/videos">Vidéos</a><a href="/">Assets</a><a href="/references">Chansons de référence</a><a href="/settings" class="active">Paramètres</a>
+        <a href="/videos">Vidéos</a><a href="/">Assets</a><a href="/references">Références</a><a href="/settings" class="active">Paramètres</a>
       </nav>
       <button class="btn-ghost theme-toggle" type="button" aria-label="Thème">🌙</button>
       <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
@@ -96,7 +96,7 @@
       <div class="field"><label>Lien d'affiliation (mis en avant dans la description)</label><input id="f-affiliate_url" placeholder="https://…"></div>
       <div class="field"><label>Texte du lien (CTA)</label><input id="f-affiliate_label" placeholder="Teste ta compatibilité gratuitement"></div>
     </div>
-    <div class="field"><label>Chaînes d'inspiration (une URL ou @handle par ligne)</label><textarea id="f-inspiration_urls" rows="4" placeholder="https://www.youtube.com/@exemple&#10;@autrechaine"></textarea></div>
+    <div class="field"><label>Chaînes YouTube modèles</label><div style="font-size:12.5px;color:var(--color-mut)">Elles se gèrent dans l'onglet <a href="/references" style="color:var(--color-ink);font-weight:600">Références</a> (avec tes chansons de référence). Les boutons ci-dessous les analysent.</div></div>
     <div class="card-head" style="margin-top:6px">
       <div><div class="card-title" style="font-size:13px">Playbook</div><div class="card-desc" id="playbook-meta">Analyse les patterns de titres qui marchent chez tes inspirations (enregistre d'abord).</div></div>
       <button class="btn btn-sec" id="analyze-btn" type="button">Analyser</button>
@@ -280,7 +280,6 @@ async function loadSettings() {
   $('f-product_desc').value = st.product_desc || '';
   $('f-affiliate_url').value = st.affiliate_url || '';
   $('f-affiliate_label').value = st.affiliate_label || '';
-  $('f-inspiration_urls').value = (st.inspiration_urls || []).join('\n');
   renderPlaybook(st.playbook, st.playbook_updated_at);
   renderEmotions(s.emotions);
   $('f-cron_enabled').checked = !!s.cron_enabled;
@@ -317,7 +316,6 @@ $('save').onclick = async () => {
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
     objective: $('f-objective').value, product_desc: $('f-product_desc').value,
     affiliate_url: $('f-affiliate_url').value.trim(), affiliate_label: $('f-affiliate_label').value.trim(),
-    inspiration_urls: $('f-inspiration_urls').value.split('\n').map(x => x.trim()).filter(Boolean),
     cron_enabled: $('f-cron_enabled').checked, thumbnail_enabled: $('f-thumbnail_enabled').checked,
     thumbnail_text: $('f-thumbnail_text').checked, thumbnail_font: $('f-thumbnail_font').value,
     publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value
