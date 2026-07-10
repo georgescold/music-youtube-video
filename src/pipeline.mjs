@@ -69,7 +69,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     const backgrounds = [];
     for (const a of backgroundAssets) backgrounds.push(await fetchAssetFile(a, workDir));
     const ads = [];
-    for (const a of adAssets) ads.push(await fetchAssetFile(a, workDir));
+    for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
     const outPath = join(workDir, 'video.mp4');
     renderVideo({
       backgrounds, ads, audioPath, outPath, log,

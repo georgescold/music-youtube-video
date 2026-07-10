@@ -237,7 +237,7 @@ const server = http.createServer(async (req, res) => {
       try {
         await storageUpload('assets', storagePath, buffer, contentType);
         const ch = await getActiveChannel();
-        const [row] = await dbInsert('assets', [{ kind, filename, storage_path: storagePath, mime_type: contentType, size_bytes: size, channel_id: ch?.id || null }]);
+        const [row] = await dbInsert('assets', [{ kind, filename, storage_path: storagePath, mime_type: contentType, size_bytes: size, channel_id: ch?.id || null, placement: kind === 'ad' ? { x: 0.68, y: 0.55, w: 0.28, h: 0.40 } : null }]);
         return json(res, { ok: true, asset: row });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
@@ -249,6 +249,14 @@ const server = http.createServer(async (req, res) => {
         await dbDelete('assets', `id=eq.${b.id}`);
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+    }
+    if (req.method === 'POST' && path === '/api/assets/placement') {
+      const b = await readJsonBody(req);
+      if (!b.id || !b.placement) return json(res, { ok: false, error: 'id et placement requis' });
+      const q = b.placement, cl = (v, d) => Math.min(1, Math.max(0, Number(v) ?? d));
+      const placement = { x: cl(q.x, 0.68), y: cl(q.y, 0.55), w: cl(q.w, 0.28), h: cl(q.h, 0.40) };
+      try { const [row] = await dbPatch('assets', `id=eq.${b.id}`, { placement }); return json(res, { ok: true, asset: row }); }
+      catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
     if (req.method === 'POST' && path === '/api/assets/toggle') {
       const b = await readJsonBody(req);

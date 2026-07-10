@@ -133,6 +133,35 @@
   <div class="empty" id="empty" style="display:none">Aucun asset pour l'instant.</div>
 </div>
 
+<div id="pos-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;align-items:center;justify-content:center;padding:24px">
+  <style>.posp{background:var(--color-paper);border:1px solid var(--color-rule2);color:var(--color-ink);border-radius:100px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}.posp:hover{background:var(--color-soft);border-color:var(--color-ink)}</style>
+  <div style="background:var(--color-paper);border:1px solid var(--color-rule);border-radius:14px;padding:22px;width:min(700px,96vw)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <strong style="font-size:15px">Position de la pub</strong>
+      <button id="pos-close" style="background:var(--color-paper);border:1px solid var(--color-rule2);border-radius:100px;padding:5px 13px;font-size:12.5px;font-weight:600;cursor:pointer">Fermer</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--color-mut);margin:0 0 12px">Glisse pour déplacer, tire le coin pour redimensionner. La boîte respecte le format de ta pub. Le rendu utilisera exactement cette position.</p>
+    <div id="pos-canvas" style="position:relative;width:100%;aspect-ratio:16/9;background:var(--color-soft2) center/cover no-repeat;border:1px solid var(--color-rule2);border-radius:8px;overflow:hidden;user-select:none">
+      <div id="pos-box" style="position:absolute;border:2px solid var(--color-ink);box-shadow:0 0 0 9999px rgba(0,0,0,.06);cursor:move;overflow:hidden">
+        <img id="pos-img" style="width:100%;height:100%;object-fit:cover;display:none;pointer-events:none">
+        <video id="pos-vid" muted loop autoplay playsinline style="width:100%;height:100%;object-fit:cover;display:none;pointer-events:none"></video>
+        <div id="pos-resize" style="position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;background:var(--color-ink);border:2px solid #fff;border-radius:3px;cursor:nwse-resize"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:12px 0">
+      <span style="font-size:11.5px;color:var(--color-mut2);margin-right:2px">Presets :</span>
+      <button class="posp" data-pp="tl">Haut G</button>
+      <button class="posp" data-pp="tr">Haut D</button>
+      <button class="posp" data-pp="bl">Bas G</button>
+      <button class="posp" data-pp="br">Bas D</button>
+      <button class="posp" data-pp="center">Centre</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:6px">
+      <button id="pos-save" style="background:var(--color-ink);color:var(--color-paper);border:0;border-radius:100px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">Enregistrer la position</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const dz = document.getElementById('dz');
 const fileInput = document.getElementById('file');
@@ -165,7 +194,12 @@ async function upload(file) {
     if (!d.ok) { progress.textContent = 'Erreur : ' + (d.error || 'inconnue'); return; }
     progress.textContent = 'OK — ' + file.name + ' ajouté.';
     fileInput.value = '';
-    load();
+    await load();
+    if (kind === 'ad' && d.asset) {
+      const rows = await (await fetch('/api/assets')).json();
+      const a = rows.find(x => x.id === d.asset.id);
+      if (a) openPos(a);
+    }
   } catch (e) { progress.textContent = 'Erreur réseau : ' + e.message; }
 }
 
@@ -175,6 +209,7 @@ function fmtDate(s) { return new Date(s).toLocaleDateString('fr-FR', { day: '2-d
 
 async function load() {
   const rows = await (await fetch('/api/assets')).json();
+  bgPreviewUrl = (rows.find(a => a.kind === 'background' && a.url && (a.mime_type || '').startsWith('image')) || {}).url || '';
   grid.innerHTML = '';
   empty.style.display = rows.length ? 'none' : 'block';
   for (const a of rows) {
@@ -194,18 +229,59 @@ async function load() {
         <div class="meta tnum"><span>${fmtSize(a.size_bytes)}</span><span>${fmtDate(a.uploaded_at)}</span></div>
         <div class="row">
           <a href="${a.url || '#'}" target="_blank">Aperçu ↗</a>
-          <button data-id="${a.id}" data-path="${a.storage_path}">Supprimer</button>
+          <span style="display:flex;gap:6px">
+            ${a.kind === 'ad' ? '<button class="pos-btn">Position</button>' : ''}
+            <button class="del-btn" data-id="${a.id}" data-path="${a.storage_path}">Supprimer</button>
+          </span>
         </div>
       </div>`;
-    div.querySelector('button').onclick = async (e) => {
-      const { id, path } = e.target.dataset;
+    div.querySelector('.del-btn').onclick = async (e) => {
+      const { id, path } = e.currentTarget.dataset;
       if (!confirm('Supprimer cet asset ?')) return;
       await fetch('/api/assets/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, storage_path: path }) });
       load();
     };
+    const posBtn = div.querySelector('.pos-btn');
+    if (posBtn) posBtn.onclick = () => openPos(a);
     grid.appendChild(div);
   }
 }
+
+// ── Éditeur de position PAR pub (respecte le format de la pub) ──
+let bgPreviewUrl = '';
+let posAd = null, posPlacement = null, posAspect = null;
+const pcanvas = document.getElementById('pos-canvas'), pbox = document.getElementById('pos-box'), presize = document.getElementById('pos-resize'), pimg = document.getElementById('pos-img'), pvid = document.getElementById('pos-vid');
+function posApply() { pbox.style.left = (posPlacement.x * 100) + '%'; pbox.style.top = (posPlacement.y * 100) + '%'; pbox.style.width = (posPlacement.w * 100) + '%'; pbox.style.height = (posPlacement.h * 100) + '%'; }
+function posSnapH() { if (posAspect) posPlacement.h = Math.min(1 - posPlacement.y, Math.max(0.04, posPlacement.w * (16 / 9) / posAspect)); }
+function openPos(asset) {
+  posAd = asset; posAspect = null;
+  posPlacement = Object.assign({ x: 0.68, y: 0.55, w: 0.28, h: 0.40 }, asset.placement || {});
+  const isVid = (asset.mime_type || '').startsWith('video');
+  pimg.style.display = 'none'; pvid.style.display = 'none';
+  pcanvas.style.backgroundImage = bgPreviewUrl ? 'url(' + bgPreviewUrl + ')' : '';
+  const el = isVid ? pvid : pimg;
+  el.style.display = 'block';
+  const onmeta = () => { posAspect = isVid ? (pvid.videoWidth / pvid.videoHeight) : (pimg.naturalWidth / pimg.naturalHeight); if (posAspect) { posSnapH(); posApply(); } };
+  if (isVid) pvid.onloadedmetadata = onmeta; else pimg.onload = onmeta;
+  el.src = asset.url;
+  posApply();
+  document.getElementById('pos-modal').style.display = 'flex';
+}
+document.getElementById('pos-close').onclick = () => document.getElementById('pos-modal').style.display = 'none';
+let pdrag = null;
+pbox.addEventListener('mousedown', e => { if (e.target === presize) return; const r = pcanvas.getBoundingClientRect(); pdrag = { mode: 'move', sx: e.clientX, sy: e.clientY, ox: posPlacement.x, oy: posPlacement.y, cw: r.width, ch: r.height }; e.preventDefault(); });
+presize.addEventListener('mousedown', e => { const r = pcanvas.getBoundingClientRect(); pdrag = { mode: 'resize', sx: e.clientX, ow: posPlacement.w, cw: r.width }; e.preventDefault(); e.stopPropagation(); });
+window.addEventListener('mousemove', e => {
+  if (!pdrag || !posPlacement) return;
+  if (pdrag.mode === 'move') { const dx = (e.clientX - pdrag.sx) / pdrag.cw, dy = (e.clientY - pdrag.sy) / pdrag.ch; posPlacement.x = Math.min(Math.max(0, pdrag.ox + dx), 1 - posPlacement.w); posPlacement.y = Math.min(Math.max(0, pdrag.oy + dy), 1 - posPlacement.h); }
+  else { const dx = (e.clientX - pdrag.sx) / pdrag.cw; posPlacement.w = Math.min(1 - posPlacement.x, Math.max(0.06, pdrag.ow + dx)); posSnapH(); }
+  posApply();
+});
+window.addEventListener('mouseup', () => pdrag = null);
+const PP = { tl: { x: .04, y: .06, w: .22 }, tr: { x: .74, y: .06, w: .22 }, bl: { x: .04, y: .55, w: .22 }, br: { x: .74, y: .55, w: .22 }, center: { x: .37, y: .25, w: .28 } };
+for (const b of document.querySelectorAll('[data-pp]')) b.onclick = () => { if (!posPlacement) return; const p = PP[b.dataset.pp]; posPlacement.w = p.w; posPlacement.x = p.x; posPlacement.y = p.y; posSnapH(); posPlacement.x = Math.min(posPlacement.x, 1 - posPlacement.w); posPlacement.y = Math.min(posPlacement.y, 1 - posPlacement.h); posApply(); };
+document.getElementById('pos-save').onclick = async () => { if (!posAd) return; await fetch('/api/assets/placement', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: posAd.id, placement: posPlacement }) }); document.getElementById('pos-modal').style.display = 'none'; };
+
 load();
 </script>
 </body>

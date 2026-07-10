@@ -87,12 +87,7 @@ export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, ad
     filters.push(`[${inIdx}:v]setsar=1[bg]`); bgLabel = 'bg';
   }
 
-  // ── Pubs (position manuelle enregistrée, fenêtres réparties, assets en rotation) ──
-  const p = placement || {};
-  const boxW = Math.max(16, Math.round(width * (p.w ?? 0.28)));
-  const boxH = Math.max(16, Math.round(height * (p.h ?? 0.40)));
-  const ox = Math.min(width - 1, Math.max(0, Math.round(width * (p.x ?? 0.68))));
-  const oy = Math.min(height - 1, Math.max(0, Math.round(height * (p.y ?? 0.55))));
+  // ── Pubs : chaque pub a SA position (ad.placement), fenêtres réparties, assets en rotation ──
   const windows = adIntervals(D, adFrequencyMin, adDurationSec, { intro: adIntro, outro: adOutro });
   let vLabel = bgLabel;
   if (ads.length && windows.length) {
@@ -101,6 +96,11 @@ export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, ad
     ads.forEach((ad, ai) => {
       const mine = perAd[ai];
       if (!mine.length) return;
+      const p = ad.placement || placement || {};
+      const boxW = Math.max(16, Math.round(width * (p.w ?? 0.28)));
+      const boxH = Math.max(16, Math.round(height * (p.h ?? 0.40)));
+      const ox = Math.min(width - 1, Math.max(0, Math.round(width * (p.x ?? 0.68))));
+      const oy = Math.min(height - 1, Math.max(0, Math.round(height * (p.y ?? 0.55))));
       const inIdx = ad.isVideo ? addInput(['-stream_loop', '-1', '-i', ad.path]) : addInput(['-loop', '1', '-i', ad.path]);
       filters.push(`[${inIdx}:v]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1[ad${ai}]`);
       const enable = mine.map(([s, e]) => `between(t,${s.toFixed(2)},${e.toFixed(2)})`).join('+');
