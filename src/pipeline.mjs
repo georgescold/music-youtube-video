@@ -121,7 +121,12 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     // Titres déjà utilisés sur la chaîne -> jamais réutiliser le même.
     const prior = await dbSelect('videos', `?title=not.is.null${chanFilter}&select=title&order=created_at.desc&limit=200`).catch(() => []);
     const avoidTitles = prior.map(v => v.title).filter(Boolean);
-    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, log });
+    const strategy = {
+      objective: channel?.objective, product_desc: channel?.product_desc,
+      affiliate_url: channel?.affiliate_url, affiliate_label: channel?.affiliate_label,
+      playbook: channel?.playbook
+    };
+    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, strategy, log });
     await logStep('metadata', 'ok', meta.title);
 
     // 6. Upload YouTube (brouillon prive)

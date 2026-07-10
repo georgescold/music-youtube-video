@@ -26,7 +26,8 @@ export async function setActiveChannel(id) {
 }
 export async function updateChannel(id, patch) {
   const p = {};
-  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'background_mode', 'slideshow_count', 'reuse_gap'];
+  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'background_mode', 'slideshow_count', 'reuse_gap',
+    'objective', 'product_desc', 'affiliate_url', 'affiliate_label', 'inspiration_urls', 'playbook', 'playbook_updated_at'];
   for (const k of plain) if (k in patch) p[k] = patch[k];
   if (patch.ad_placement && typeof patch.ad_placement === 'object') {
     const q = patch.ad_placement, clamp = (v, d) => Math.min(1, Math.max(0, Number(v) ?? d));
@@ -54,6 +55,12 @@ export function channelPublicView(ch) {
     id: ch.id, name: ch.name, is_active: ch.is_active,
     publish_mode: ch.publish_mode || 'review',
     cron_enabled: !!ch.cron_enabled,
+    strategy: {
+      objective: ch.objective || '', product_desc: ch.product_desc || '',
+      affiliate_url: ch.affiliate_url || '', affiliate_label: ch.affiliate_label || '',
+      inspiration_urls: Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [],
+      playbook: ch.playbook || null, playbook_updated_at: ch.playbook_updated_at || null
+    },
     discord: { configured: !!ch.discord_webhook, mask: mask(ch.discord_webhook) },
     youtube: { configured: !!ch.yt_refresh_token, clientId: ch.yt_client_id || null, clientIdMask: mask(ch.yt_client_id), channelId: ch.yt_channel_id || null, hasSecret: !!ch.yt_client_secret, hasRefresh: !!ch.yt_refresh_token },
     epidemic: { configured: !!ch.epidemic_jwt, mask: mask(decrypt(ch.epidemic_jwt)) },

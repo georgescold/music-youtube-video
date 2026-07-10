@@ -12,6 +12,7 @@ import { setPrivacyStatus, deleteVideo, getMyChannel } from './services/youtube.
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
 import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView } from './services/channels.mjs';
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
+import { analyzeInspiration } from './steps/playbook.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -423,6 +424,8 @@ const server = http.createServer(async (req, res) => {
       if (b.background_mode === 'single' || b.background_mode === 'slideshow') patch.background_mode = b.background_mode;
       if (b.slideshow_count != null) patch.slideshow_count = Math.max(0, Math.min(100, Number(b.slideshow_count) || 0));
       if (b.reuse_gap != null) patch.reuse_gap = Math.max(0, Math.min(365, Number(b.reuse_gap) || 0));
+      for (const k of ['objective', 'product_desc', 'affiliate_url', 'affiliate_label']) if (typeof b[k] === 'string') patch[k] = b[k].trim();
+      if (Array.isArray(b.inspiration_urls)) patch.inspiration_urls = b.inspiration_urls.map(s => String(s).trim()).filter(Boolean).slice(0, 20);
       // Secrets : mis à jour uniquement si une nouvelle valeur non vide est fournie (sinon on conserve l'existant).
       for (const [field, incoming] of [['yt_client_secret', b.yt_client_secret], ['yt_refresh_token', b.yt_refresh_token], ['epidemic_jwt', b.epidemic_jwt], ['claude_token', b.claude_token]]) {
         if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
@@ -437,6 +440,18 @@ const server = http.createServer(async (req, res) => {
       if (!ch?.discord_webhook) return json(res, { ok: false, detail: 'aucun webhook configuré' });
       const ok = await sendDiscord(ch.discord_webhook, { title: '🔔 Test — The Playlist Youtube', description: 'Le webhook de la chaîne « ' + (ch.name || '') + ' » est bien connecté.', color: COLORS.info });
       return json(res, { ok, detail: ok ? 'message envoyé sur Discord' : 'échec de l\'envoi' });
+    }
+    // Analyse les chaînes d'inspiration -> playbook (patterns titres/miniatures).
+    if (req.method === 'POST' && path === '/api/settings/analyze-inspiration') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { ok: false, error: 'aucune chaîne active' });
+      const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
+      if (!urls.length) return json(res, { ok: false, error: 'ajoute au moins une chaîne d\'inspiration puis enregistre avant d\'analyser' });
+      const token = channelCreds(ch).claudeToken;
+      const r = await analyzeInspiration(urls, { token, log: m => console.log('[playbook]', m) });
+      if (!r.ok) return json(res, { ok: false, error: r.error });
+      const updated = await updateChannel(ch.id, { playbook: r.playbook, playbook_updated_at: new Date().toISOString() });
+      return json(res, { ok: true, playbook: r.playbook, errors: r.errors || [], channel: channelPublicView(updated) });
     }
     // Rafraîchit le nom (et l'ID) de la chaîne depuis YouTube.
     if (req.method === 'POST' && path === '/api/settings/refresh-name') {

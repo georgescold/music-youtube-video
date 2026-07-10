@@ -34,6 +34,9 @@
   .chanbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   select, input { font-family: var(--font-sans); font-size: 13.5px; color: var(--color-ink); background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; padding: 9px 11px; outline: none; }
   select:focus, input:focus { border-color: var(--color-ink); }
+  textarea { width: 100%; font-family: var(--font-sans); font-size: 13.5px; color: var(--color-ink); background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; padding: 9px 11px; outline: none; resize: vertical; line-height: 1.5; }
+  textarea:focus { border-color: var(--color-ink); }
+  .card-desc { font-size: 11.5px; color: var(--color-mut2); }
   .card { background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
   .card-title { font-weight: 700; font-size: 14px; }
@@ -82,6 +85,23 @@
       <button class="btn btn-sec" id="chan-refresh" type="button" title="Récupérer le nom actuel depuis YouTube">↻ Depuis YouTube</button>
     </div>
     <div id="refresh-msg" style="font-size:11.5px;color:var(--color-mut2);margin-top:5px"></div>
+  </div>
+
+  <h2>Stratégie de la chaîne</h2>
+  <div class="card">
+    <p class="hint" style="margin:-2px 0 14px">Guide l'écriture des titres/descriptions : objectif, produit à promouvoir, lien d'affiliation mis en avant, et analyse des chaînes d'inspiration.</p>
+    <div class="field"><label>Objectif de la chaîne</label><textarea id="f-objective" rows="2" placeholder="Ex : toucher les femmes célibataires, donner envie de croire en l'amour, ramener vers l'app."></textarea></div>
+    <div class="field"><label>Produit à promouvoir</label><textarea id="f-product_desc" rows="2" placeholder="Ex : Compaatible, l'app qui trouve les gens vraiment faits pour toi."></textarea></div>
+    <div class="grid2">
+      <div class="field"><label>Lien d'affiliation (mis en avant dans la description)</label><input id="f-affiliate_url" placeholder="https://…"></div>
+      <div class="field"><label>Texte du lien (CTA)</label><input id="f-affiliate_label" placeholder="Teste ta compatibilité gratuitement"></div>
+    </div>
+    <div class="field"><label>Chaînes d'inspiration (une URL ou @handle par ligne)</label><textarea id="f-inspiration_urls" rows="4" placeholder="https://www.youtube.com/@exemple&#10;@autrechaine"></textarea></div>
+    <div class="card-head" style="margin-top:6px">
+      <div><div class="card-title" style="font-size:13px">Playbook</div><div class="card-desc" id="playbook-meta">Analyse les patterns de titres qui marchent chez tes inspirations (enregistre d'abord).</div></div>
+      <button class="btn btn-sec" id="analyze-btn" type="button">Analyser</button>
+    </div>
+    <div id="playbook-view" style="font-size:12.5px;color:var(--color-mut);white-space:pre-wrap;margin-top:6px"></div>
   </div>
 
   <h2>YouTube</h2>
@@ -224,6 +244,13 @@ async function loadSettings() {
   $('f-slideshow_count').value = s.settings.slideshow_count ?? 0;
   $('f-reuse_gap').value = s.settings.reuse_gap ?? 30;
   syncBgMode();
+  const st = s.strategy || {};
+  $('f-objective').value = st.objective || '';
+  $('f-product_desc').value = st.product_desc || '';
+  $('f-affiliate_url').value = st.affiliate_url || '';
+  $('f-affiliate_label').value = st.affiliate_label || '';
+  $('f-inspiration_urls').value = (st.inspiration_urls || []).join('\n');
+  renderPlaybook(st.playbook, st.playbook_updated_at);
   $('f-cron_enabled').checked = !!s.cron_enabled;
   $('f-publish_mode').value = s.publish_mode || 'review';
   $('f-discord_webhook').placeholder = (s.discord && s.discord.configured) ? '•••• configuré — laisse vide pour ne pas changer' : 'https://discord.com/api/webhooks/…';
@@ -245,6 +272,9 @@ $('save').onclick = async () => {
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
     ad_intro: $('f-ad_intro').checked, ad_outro: $('f-ad_outro').checked,
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
+    objective: $('f-objective').value, product_desc: $('f-product_desc').value,
+    affiliate_url: $('f-affiliate_url').value.trim(), affiliate_label: $('f-affiliate_label').value.trim(),
+    inspiration_urls: $('f-inspiration_urls').value.split('\n').map(x => x.trim()).filter(Boolean),
     cron_enabled: $('f-cron_enabled').checked,
     publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value
   };
@@ -266,6 +296,30 @@ for (const btn of document.querySelectorAll('[data-test]')) {
     btn.disabled = false;
   };
 }
+function renderPlaybook(pb, updatedAt) {
+  const meta = $('playbook-meta'), view = $('playbook-view');
+  if (!pb) { view.textContent = ''; return; }
+  meta.textContent = 'Dernière analyse : ' + (updatedAt ? new Date(updatedAt).toLocaleString('fr-FR') : '—');
+  const section = (t, arr) => (arr && arr.length) ? '▸ ' + t + '\n' + arr.map(x => '   • ' + x).join('\n') + '\n\n' : '';
+  view.textContent =
+    section('Formules de titres', pb.title_patterns) +
+    section('Déclencheurs émotionnels', pb.emotional_hooks) +
+    section('Miniatures', pb.thumbnail_patterns) +
+    section('À faire', pb.do) +
+    section('À éviter', pb.dont);
+}
+
+$('analyze-btn').onclick = async () => {
+  const btn = $('analyze-btn'), meta = $('playbook-meta');
+  btn.disabled = true; meta.textContent = 'Analyse en cours (résolution des chaînes + synthèse Claude)…';
+  try {
+    const d = await (await fetch('/api/settings/analyze-inspiration', { method: 'POST' })).json();
+    if (d.ok) { renderPlaybook(d.playbook, new Date().toISOString()); if (d.errors && d.errors.length) meta.textContent += ' · ignoré : ' + d.errors.join(' ; '); }
+    else meta.textContent = 'Échec : ' + (d.error || 'inconnu');
+  } catch (e) { meta.textContent = 'Erreur réseau'; }
+  btn.disabled = false;
+};
+
 $('chan-refresh').onclick = async () => {
   const btn = $('chan-refresh'), msg = $('refresh-msg');
   btn.disabled = true; msg.style.color = 'var(--color-mut2)'; msg.textContent = 'Récupération depuis YouTube…';

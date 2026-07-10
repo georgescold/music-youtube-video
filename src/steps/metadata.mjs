@@ -17,19 +17,24 @@ function normTitle(t) {
     .replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], log = () => {} }) {
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, log = () => {} }) {
+  const pb = strategy.playbook || {};
   const system = [
     "Tu es un expert du SEO YouTube pour les chaînes de playlists de musique d'amour francophones.",
     "Le format qui marche : un TITRE émotionnel à la 2e personne (style « POV : ... » ou scénario intime), en français, avec la balise [Playlist].",
     "Le titre doit être le plus deep et émotionnel possible, et TOUJOURS différent des titres déjà publiés.",
+    strategy.objective ? `Objectif de la chaîne : ${strategy.objective}` : '',
+    strategy.product_desc ? `Produit à mettre en valeur (pour orienter le champ lexical, sans le citer dans le titre) : ${strategy.product_desc}` : '',
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   const avoidSet = new Set(avoidTitles.map(normTitle));
   const buildUser = (extraAvoid = []) => [
     `Ambiance de la playlist : ${mood}.`,
     `Voici des exemples de tons de titres appréciés (inspire-toi du style, n'en recopie aucun mot pour mot) :`,
     TITLE_SEEDS.map(s => '- ' + s).join('\n'),
+    pb.title_patterns?.length ? '\nFormules de titres qui marchent sur les chaînes d\'inspiration (applique l\'esprit, pas le copier-coller) :\n' + pb.title_patterns.slice(0, 10).map(s => '- ' + s).join('\n') : '',
+    pb.emotional_hooks?.length ? 'Déclencheurs émotionnels à exploiter : ' + pb.emotional_hooks.slice(0, 12).join(', ') : '',
     (avoidTitles.length || extraAvoid.length) ? '\nNe RÉUTILISE JAMAIS aucun de ces titres déjà publiés (ni une variante quasi identique) :' : '',
     [...avoidTitles, ...extraAvoid].slice(-40).map(s => '- ' + s).join('\n'),
     '',
@@ -54,10 +59,15 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
   }
 
   const tracklistText = tracklist.map(l => `${l.stamp} ${l.title}${l.artist ? ' — ' + l.artist : ''}`).join('\n');
+  // Lien mis en avant : lien d'affiliation de la chaîne si fourni, sinon le lien Compaatible (UTM).
+  const ctaUrl = strategy.affiliate_url || utmUrl || '';
+  const ctaLabel = strategy.affiliate_label || 'Test de compatibilité gratuit';
+  const productLine = strategy.product_desc || 'Cette playlist t\'est proposée par Compaatible, l\'app qui trouve les gens vraiment faits pour toi.';
   const compaatibleBlock = [
-    '——— Rien n\'est un hasard ———',
-    'Cette playlist t\'est proposée par Compaatible, l\'app qui trouve les gens vraiment faits pour toi.',
-    'Test de compatibilité gratuit 👉 ' + (utmUrl || '')
+    '━━━━━━━━━━━━━━━━━━',
+    '💞 ' + productLine,
+    '👉 ' + ctaLabel + ' : ' + ctaUrl,
+    '━━━━━━━━━━━━━━━━━━'
   ].join('\n');
 
   const description = [
