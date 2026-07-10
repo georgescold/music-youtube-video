@@ -1,8 +1,6 @@
-// Curation "profonde" : construit une playlist variée et cohérente avec les chansons de référence.
-// 1) Claude analyse les références -> plusieurs angles de recherche distincts (genre/instrument/tempo/mood)
-// 2) recherches multi-angles + match externalID Spotify + moods des références
-// 3) expansion via "morceaux similaires"
-// 4) dédup + variété d'artistes + remplissage jusqu'à la cible.
+// Curation adaptative : Claude analyse les références, décide voix/instrumental et les angles,
+// puis on cherche multi-angles + externalID + moods + similaires -> dédup + variété d'artistes.
+// Conçu pour être multi-utilisateurs : aucune préférence de style codée en dur, tout vient des références.
 import { callTool } from '../services/epidemicMcp.mjs';
 import { askClaude, extractJson } from '../services/claude.mjs';
 
@@ -33,24 +31,30 @@ async function similarTo(id, first = 8) {
   catch { return []; }
 }
 
-// Claude génère des angles de recherche variés à partir des références.
-async function anglesFromClaude(references, moodHint) {
+// Claude analyse le style COMMUN des références et décide de l'approche (adaptatif, pas de style imposé).
+async function analyzeReferences(references, moodHint) {
   const refDesc = references.map(r => `- ${r.title || r.spotify_url}${(r.mood_tags || []).length ? ' [moods: ' + r.mood_tags.join(', ') + ']' : ''}`).join('\n') || '(aucune référence précise)';
-  const system = "Tu es directeur musical d'une chaîne de playlists de musique d'amour. Tu réponds UNIQUEMENT en JSON valide.";
+  const system = "Tu es directeur musical. Tu analyses des chansons de référence pour bâtir une playlist qui leur ressemble. Tu réponds UNIQUEMENT en JSON valide.";
   const user = [
-    `Ambiance cible : ${moodHint || 'romantique'}.`,
-    `Chansons de référence données par l'utilisateur (le style à approcher) :`,
+    `Ambiance/thème indicatif : ${moodHint || 'à déduire des références'}.`,
+    `Chansons de référence fournies par l'utilisateur :`,
     refDesc,
     '',
-    "Propose 12 angles de recherche EN ANGLAIS pour piocher dans une grande bibliothèque de musique (instrumentale/production), variés mais tous cohérents avec ces références et l'ambiance amour.",
-    "Couvre différents axes : genre (ex: soul, rnb, folk, cinematic, lofi, jazz, indie), instrument (piano, acoustic guitar, strings), tempo/énergie (slow, mellow), et nuances émotionnelles (nostalgic, tender, passionate, bittersweet).",
-    "Chaque angle = 2 à 4 mots. Évite les répétitions.",
-    'Format EXACT : {"angles":["...","...", ...]}'
+    "Analyse le STYLE COMMUN de ces références et décide de la meilleure approche pour une playlist longue qui leur ressemble.",
+    "Réponds avec :",
+    '- "understanding" : 1-2 phrases EN FRANÇAIS décrivant précisément le style commun (genre, instrumentation, tempo, mood, type de voix, époque).',
+    '- "vocals" : "instrumental", "vocal" ou "mixed" — choisis ce qui ressemble le plus au caractère des références (si elles sont chantées et que la voix est centrale, penche vers "vocal" ou "mixed").',
+    '- "angles" : 12 requêtes de recherche EN ANGLAIS, variées mais cohérentes avec les références (genre, instrument, tempo/énergie, nuance émotionnelle). 2-4 mots chacune, sans répétition.',
+    'Format EXACT : {"understanding":"...","vocals":"instrumental|vocal|mixed","angles":["...", ...]}'
   ].join('\n');
   try {
-    const a = extractJson(await askClaude(system, user, 'sonnet')).angles;
-    return Array.isArray(a) ? a.filter(x => typeof x === 'string' && x.trim()).slice(0, 12) : [];
-  } catch { return []; }
+    const j = extractJson(await askClaude(system, user, 'sonnet'));
+    return {
+      understanding: typeof j.understanding === 'string' ? j.understanding.trim() : '',
+      vocals: ['instrumental', 'vocal', 'mixed'].includes(j.vocals) ? j.vocals : 'mixed',
+      angles: Array.isArray(j.angles) ? j.angles.filter(x => typeof x === 'string' && x.trim()).slice(0, 12) : []
+    };
+  } catch { return { understanding: '', vocals: 'mixed', angles: [] }; }
 }
 
 const DEFAULT_ANGLES = ['romantic piano', 'soft love ballad', 'acoustic love song', 'cinematic romance', 'nostalgic love', 'slow rnb love', 'tender strings', 'mellow indie love', 'jazzy romance', 'ambient love', 'folk love song', 'bittersweet piano'];
@@ -61,30 +65,35 @@ function shuffle(arr) {
   return a;
 }
 
-export async function curatePlaylist({ references = [], targetSec = 5400, vocals = false, moodHint = 'romantique', log = () => {} }) {
-  const filter = { vocals, duration: { min: 90000, max: 360000 } };
+// vocalsOverride: 'instrumental' | 'vocal' | 'mixed' | undefined (undefined = Claude décide, adaptatif)
+export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, log = () => {} }) {
+  const analysis = await analyzeReferences(references, moodHint);
+  const vocalsMode = vocalsOverride || analysis.vocals;
+  if (analysis.understanding) log('compris : ' + analysis.understanding);
+  log('mode voix : ' + vocalsMode);
+
+  const filter = { duration: { min: 90000, max: 360000 } };
+  if (vocalsMode === 'instrumental') filter.vocals = false;
+  else if (vocalsMode === 'vocal') filter.vocals = true;
+  // "mixed" : pas de filtre vocals -> Epidemic renvoie les deux.
+
+  let angles = analysis.angles;
+  if (angles.length < 6) angles = [...new Set([...angles, ...DEFAULT_ANGLES])].slice(0, 12);
+  log('angles : ' + angles.join(' · '));
+
   const pool = new Map();
   const add = list => { for (const r of list) pool.set(r.id, r); };
 
-  // 1) Angles Claude (fallback sur une liste variée si Claude échoue)
-  let angles = await anglesFromClaude(references, moodHint);
-  if (angles.length < 6) angles = [...new Set([...angles, ...DEFAULT_ANGLES])].slice(0, 12);
-  log('angles : ' + angles.join(' · '));
   for (const a of angles) add(await searchTerm(a, filter, 10));
-
-  // 2) Match externalID Spotify + moods des références
   for (const ref of references) {
     const sid = spotifyTrackId(ref.spotify_url);
     if (sid) add(await searchExternal(sid, filter, 15));
     for (const m of (ref.mood_tags || [])) add(await searchTerm(m, filter, 8));
   }
   log('pool après recherches : ' + pool.size);
-
-  // 3) Expansion "similaires" sur quelques graines
   for (const seed of shuffle([...pool.values()]).slice(0, 6)) add(await similarTo(seed.id, 8));
   log('pool après similaires : ' + pool.size);
 
-  // 4) Sélection variée : mélange, cap 2 par artiste, remplissage jusqu'à la cible
   const shuffled = shuffle([...pool.values()]);
   const selected = [];
   const perArtist = {};
@@ -103,6 +112,6 @@ export async function curatePlaylist({ references = [], targetSec = 5400, vocals
     }
   }
   const uniqueArtists = new Set(selected.map(mainArtist)).size;
-  log(`sélection : ${selected.length} morceaux · ${Math.round(total / 60)} min · ${uniqueArtists} artistes différents (pool ${pool.size})`);
-  return { tracks: selected, totalSec: total };
+  log(`sélection : ${selected.length} morceaux · ${Math.round(total / 60)} min · ${uniqueArtists} artistes (pool ${pool.size})`);
+  return { tracks: selected, totalSec: total, understanding: analysis.understanding, vocalsMode };
 }
