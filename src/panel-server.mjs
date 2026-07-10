@@ -1,4 +1,4 @@
-// Panneau de controle "Au Bon Moment" : sert panel.html + API (auth, assets).
+// Panneau de controle "The Playlist Youtube" : sert panel.html + API (auth, assets).
 // Meme pattern que reddit-warmup : Node http natif, sans framework, sans build step.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -112,7 +112,7 @@ async function readJsonBody(req) { let b = ''; for await (const c of req) { b +=
 
 function authPage(mode) {
   const signup = mode === 'signup';
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${signup ? 'Créer un compte' : 'Connexion'} — Au Bon Moment</title>
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${signup ? 'Créer un compte' : 'Connexion'} — The Playlist Youtube</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -138,7 +138,7 @@ button:disabled{opacity:.5}
 .err{color:var(--danger)}.ok{color:var(--success)}
 </style></head><body>
 <div class="card">
-  <h1>${signup ? 'Crée ton compte' : 'Au Bon Moment'}</h1>
+  <h1>${signup ? 'Crée ton compte' : 'The Playlist Youtube'}</h1>
   <p class="sub">${signup ? 'Premier compte = propriétaire du panneau.' : 'Connexion au panneau'}</p>
   <form id="f">
     <label>Email</label><input id="email" type="email" autocomplete="username" required>
