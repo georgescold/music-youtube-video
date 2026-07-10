@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, storageDelete } from './services/supabase.mjs';
 import { runPipeline } from './pipeline.mjs';
-import { setPrivacyStatus, deleteVideo } from './services/youtube.mjs';
+import { setPrivacyStatus, deleteVideo, getMyChannel } from './services/youtube.mjs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
 import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView } from './services/channels.mjs';
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
@@ -420,6 +420,22 @@ const server = http.createServer(async (req, res) => {
       if (!ch?.discord_webhook) return json(res, { ok: false, detail: 'aucun webhook configuré' });
       const ok = await sendDiscord(ch.discord_webhook, { title: '🔔 Test — The Playlist Youtube', description: 'Le webhook de la chaîne « ' + (ch.name || '') + ' » est bien connecté.', color: COLORS.info });
       return json(res, { ok, detail: ok ? 'message envoyé sur Discord' : 'échec de l\'envoi' });
+    }
+    // Rafraîchit le nom (et l'ID) de la chaîne depuis YouTube.
+    if (req.method === 'POST' && path === '/api/settings/refresh-name') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { ok: false, error: 'aucune chaîne active' });
+      const creds = channelCreds(ch);
+      if (!creds.youtube?.refreshToken) return json(res, { ok: false, error: 'YouTube non connecté sur cette chaîne' });
+      try {
+        const yt = await getMyChannel(creds.youtube);
+        const title = yt?.snippet?.title?.trim();
+        if (!title) return json(res, { ok: false, error: 'nom introuvable côté YouTube' });
+        const patch = { name: title };
+        if (yt.id && yt.id !== ch.yt_channel_id) patch.yt_channel_id = yt.id;
+        const updated = await updateChannel(ch.id, patch);
+        return json(res, { ok: true, name: title, channel: channelPublicView(updated) });
+      } catch (e) { return json(res, { ok: false, error: e.message }); }
     }
     if (req.method === 'POST' && (path === '/api/test/youtube' || path === '/api/test/epidemic' || path === '/api/test/claude')) {
       const creds = channelCreds(await getActiveChannel());
