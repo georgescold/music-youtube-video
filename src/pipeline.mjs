@@ -11,6 +11,7 @@ import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus, setThumbnail } from './services/youtube.mjs';
 import { getActiveChannel, updateChannel } from './services/channels.mjs';
+import { chooseEmotionIndex } from './steps/coach.mjs';
 import { sendDiscord, COLORS } from './services/notify.mjs';
 
 const MOODS = ['romantique et doux', 'romantique nostalgique', 'romantique piano', 'romantique nuit', 'romantique acoustique'];
@@ -39,14 +40,15 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
   const randomTarget = (Math.floor(lo / 60) + Math.floor(Math.random() * (Math.floor(hi / 60) - Math.floor(lo / 60) + 1))) * 60;
   const target = targetSec || randomTarget;
 
-  // Émotion de la vidéo : rotation sans répétition dans la palette dérivée (couvre toute la palette avant de recommencer).
+  // Émotion de la vidéo : rotation (couverture) + exploitation des émotions gagnantes si le coach a assez de données.
   const palette = Array.isArray(channel?.emotion_palette) ? channel.emotion_palette : [];
   let emotion = null;
   if (palette.length) {
-    const idx = (channel.emotion_cursor || 0) % palette.length;
-    emotion = palette[idx];
-    // On avance le curseur tout de suite (même si le run échoue) pour ne pas rester bloqué sur une émotion.
-    await updateChannel(channel.id, { emotion_cursor: idx + 1 }).catch(() => {});
+    const choice = chooseEmotionIndex({ palette, cursor: channel.emotion_cursor || 0, coachState: channel.coach_state || null, rnd: Math.random() });
+    emotion = palette[choice.index];
+    if (choice.exploit) log('émotion (exploitation coach) : ' + emotion?.name);
+    // On avance le curseur tout de suite (même si le run échoue) pour couvrir la palette en exploration.
+    await updateChannel(channel.id, { emotion_cursor: (channel.emotion_cursor || 0) + 1 }).catch(() => {});
   }
   const mood = emotion?.name || MOODS[dayIndex % MOODS.length];
 
@@ -190,6 +192,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
       title: meta.title, description: meta.description, tags: meta.tags, hashtags: meta.hashtags || [],
       duration_sec: durSec, utm_url: utmUrl, theme: curation.understanding || mood,
       youtube_video_id: youtubeId, youtube_url: youtubeUrl, thumbnail_url: thumbnailUrl,
+      published_at: finalStatus === 'published' ? new Date().toISOString() : null,
       background_asset: chosenBgAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null,
       background_asset_ids: chosenBgAssets.map(a => a.id)
     });

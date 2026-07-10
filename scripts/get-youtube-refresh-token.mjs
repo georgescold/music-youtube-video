@@ -24,7 +24,8 @@ const PORT = 8080;
 const REDIRECT_URI = `http://localhost:${PORT}/oauth2callback`;
 const SCOPES = [
   'https://www.googleapis.com/auth/youtube',
-  'https://www.googleapis.com/auth/youtube.upload'
+  'https://www.googleapis.com/auth/youtube.upload',
+  'https://www.googleapis.com/auth/yt-analytics.readonly' // stats de reach (CTR, rétention) pour le CRON intelligent
 ].join(' ');
 
 if (!CLIENT_ID || !CLIENT_SECRET) {

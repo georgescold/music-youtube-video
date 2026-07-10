@@ -22,6 +22,27 @@ export async function getAccessToken(creds = envCreds()) {
   return data.access_token;
 }
 
+// Stats publiques de base (Data API) pour une liste de vidéos : vues, likes, commentaires.
+export async function getVideoStats(videoIds = [], creds = envCreds()) {
+  if (!videoIds.length) return {};
+  const accessToken = await getAccessToken(creds);
+  const out = {};
+  for (let i = 0; i < videoIds.length; i += 50) {
+    const batch = videoIds.slice(i, i + 50).join(',');
+    const r = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${batch}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const d = await r.json();
+    if (!r.ok) throw new Error(`videos.list stats: ${r.status} ${JSON.stringify(d).slice(0, 160)}`);
+    for (const v of (d.items || [])) {
+      out[v.id] = {
+        views: Number(v.statistics?.viewCount || 0),
+        likes: Number(v.statistics?.likeCount || 0),
+        comments: Number(v.statistics?.commentCount || 0)
+      };
+    }
+  }
+  return out;
+}
+
 export async function getMyChannel(creds = envCreds()) {
   const accessToken = await getAccessToken(creds);
   const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet,status&mine=true', { headers: { Authorization: `Bearer ${accessToken}` } });

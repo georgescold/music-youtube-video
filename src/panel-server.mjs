@@ -15,6 +15,7 @@ import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
 import { deriveEmotions } from './steps/emotions.mjs';
 import { generateSeoPlan } from './steps/seoPlan.mjs';
+import { computeCadence, analyzeAndDecide } from './steps/coach.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -40,6 +41,7 @@ const MAX_UPLOAD_BYTES = 45 * 1024 * 1024; // marge sous la limite bucket (50 Mo
 // ── Etat de generation + planificateur quotidien ──
 const genState = { running: false, videoId: null, phase: null, error: null, startedAt: null, lastResult: null };
 let genTimer = null;
+let coachTimer = null;
 
 function generateOnce({ dryRun = false } = {}) {
   if (genState.running) return false;
@@ -51,31 +53,81 @@ function generateOnce({ dryRun = false } = {}) {
 }
 
 function toMinOfDay(hhmm) { const [h, m] = String(hhmm || '18:00').slice(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); }
-// Tire une heure au hasard dans la fenêtre [start, end] (gère le passage minuit) et renvoie le délai jusqu'à la prochaine occurrence.
-function msUntilNextDaily(start, end) {
-  let a = toMinOfDay(start), b = toMinOfDay(end);
-  if (b < a) b += 1440; // fenêtre qui déborde sur le lendemain
-  const pick = a + Math.floor(Math.random() * (b - a + 1)); // minutes depuis minuit (peut dépasser 1440)
-  const now = new Date();
-  const next = new Date(now); next.setHours(0, 0, 0, 0); next.setMinutes(pick);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  return { wait: next - now, at: next };
+function windowDates(start, end, now) {
+  let a = toMinOfDay(start), b = toMinOfDay(end); if (b < a) b += 1440;
+  const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+  return { startDt: new Date(midnight.getTime() + a * 60000), endDt: new Date(midnight.getTime() + b * 60000) };
 }
+function pickInRange(fromDt, toDt) { const span = Math.max(0, toDt - fromDt); return new Date(fromDt.getTime() + Math.random() * span); }
+
+async function channelMaturity(chId) {
+  const pub = await dbSelect('videos', `?channel_id=eq.${chId}&status=eq.published&select=id`).catch(() => []);
+  const first = await dbSelect('videos', `?channel_id=eq.${chId}&select=created_at&order=created_at.asc&limit=1`).catch(() => []);
+  const ageDays = first[0] ? Math.round((Date.now() - new Date(first[0].created_at)) / 86400000) : 0;
+  return { published: pub.length, ageDays };
+}
+async function generatedToday(chId) {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const rows = await dbSelect('videos', `?channel_id=eq.${chId}&created_at=gte.${start.toISOString()}&select=id`).catch(() => []);
+  return rows.length;
+}
+
 async function setupScheduler() {
   if (genTimer) clearTimeout(genTimer);
   const ch = await getActiveChannel().catch(() => null);
   if (!ch?.cron_enabled) { console.log('[scheduler] CRON désactivé — aucune génération automatique programmée.'); return; }
-  const start = ch?.publish_time_start || (ch?.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
-  const end = ch?.publish_time_end || start;
-  const { wait, at } = msUntilNextDaily(start, end);
+  const { published, ageDays } = await channelMaturity(ch.id);
+  const cadence = computeCadence({ publishedCount: published, ageDays, maxPerDay: ch.max_posts_per_day || 1 });
+  const doneToday = await generatedToday(ch.id);
+  const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
+  const end = ch.publish_time_end || start;
+  const now = new Date();
+  const { startDt, endDt } = windowDates(start, end, now);
+  let at;
+  if (doneToday < cadence && now < endDt) at = pickInRange(new Date(Math.max(now, startDt)), endDt);           // encore un créneau aujourd'hui
+  else at = pickInRange(new Date(startDt.getTime() + 86400000), new Date(endDt.getTime() + 86400000));         // demain
+  const wait = Math.max(1000, at - now);
   genTimer = setTimeout(async () => {
-    // Re-vérifie l'interrupteur au moment de tirer (il a pu être coupé entre-temps).
     const cur = await getActiveChannel().catch(() => null);
-    if (cur?.cron_enabled) { console.log('[scheduler] génération quotidienne'); generateOnce({ dryRun: false }); }
-    else console.log('[scheduler] CRON désactivé au dernier moment — génération annulée.');
+    if (cur?.cron_enabled && (await generatedToday(cur.id)) < computeCadence({ publishedCount: published, ageDays, maxPerDay: cur.max_posts_per_day || 1 })) {
+      console.log('[scheduler] génération (cadence ' + cadence + '/j)'); generateOnce({ dryRun: false });
+    } else console.log('[scheduler] créneau sauté (CRON off ou quota du jour atteint).');
     setupScheduler();
   }, wait);
-  console.log(`[scheduler] prochaine génération dans ${Math.round(wait / 60000)} min — ${at.toLocaleTimeString('fr-FR')} (fenêtre ${start}–${end} ${process.env.TZ})`);
+  console.log(`[scheduler] cadence ${cadence}/j (${published} publiées, ${ageDays}j) · déjà ${doneToday} aujourd'hui · prochaine ${at.toLocaleString('fr-FR')} (fenêtre ${start}–${end})`);
+}
+
+// CRON intelligent : analyse quotidienne des stats + décisions + rapport Discord.
+async function setupCoach() {
+  if (coachTimer) clearTimeout(coachTimer);
+  const now = new Date();
+  const at = new Date(now); at.setHours(9, 0, 0, 0); if (at <= now) at.setDate(at.getDate() + 1); // tous les jours ~09:00
+  coachTimer = setTimeout(async () => { await runCoach().catch(e => console.error('[coach]', e.message)); setupCoach(); }, at - now);
+  console.log(`[coach] prochaine analyse ${at.toLocaleString('fr-FR')}`);
+}
+async function runCoach({ force = false } = {}) {
+  const ch = await getActiveChannel().catch(() => null);
+  if (!ch) return { ok: false, error: 'aucune chaîne active' };
+  if (!ch.coach_enabled && !force) return { ok: false, error: 'coach désactivé' };
+  const creds = channelCreds(ch).youtube;
+  const token = channelCreds(ch).claudeToken;
+  const r = await analyzeAndDecide({ channel: ch, creds, token, log: m => console.log('[coach]', m) });
+  if (!r.ok) return r;
+  await updateChannel(ch.id, { coach_state: r.state, coach_updated_at: new Date().toISOString() }).catch(() => {});
+  if (ch.discord_webhook) {
+    const s = r.state;
+    const lines = [
+      `📊 ${s.published} publiées · ${s.sample_size} analysées · source ${s.metrics_source}`,
+      s.best_emotion ? `Meilleure émotion : ${s.best_emotion}` : '',
+      s.best_hour != null ? `Meilleur créneau : ${s.best_hour}h` : '',
+      s.best_duration_min ? `Meilleure durée : ~${s.best_duration_min} min` : '',
+      s.insights ? '\n' + s.insights : '',
+      (s.recommendations || []).length ? '\nDécisions :\n• ' + s.recommendations.join('\n• ') : '',
+      s.needs_reauth ? '\n⚠️ Ré-autorise l\'accès YouTube pour les métriques Analytics (CTR/rétention).' : ''
+    ].filter(Boolean).join('\n');
+    sendDiscord(ch.discord_webhook, { title: '🧠 Rapport du coach — ' + ch.name, description: lines.slice(0, 1800), color: COLORS.info }).catch(() => {});
+  }
+  return r;
 }
 
 // ── Comptes (email + mot de passe) + session par cookie signe (HMAC). 1er inscrit = proprietaire,
@@ -352,7 +404,7 @@ const server = http.createServer(async (req, res) => {
       if (!v) return json(res, { ok: false, error: 'vidéo introuvable' });
       try {
         if (v.youtube_video_id) await setPrivacyStatus(v.youtube_video_id, 'public');
-        await dbPatch('videos', `id=eq.${b.id}`, { status: 'published' });
+        await dbPatch('videos', `id=eq.${b.id}`, { status: 'published', published_at: new Date().toISOString() });
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
@@ -423,6 +475,8 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.discord_webhook === 'string' && b.discord_webhook.trim()) { const w = b.discord_webhook.trim(); if (isDiscordWebhook(w)) patch.discord_webhook = w; else return json(res, { ok: false, error: 'Webhook Discord invalide (https://discord.com/api/webhooks/…)' }); }
       if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
+      if (typeof b.coach_enabled === 'boolean') patch.coach_enabled = b.coach_enabled;
+      if (b.max_posts_per_day != null) patch.max_posts_per_day = Math.max(1, Math.min(10, Number(b.max_posts_per_day) || 1));
       if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
       if (typeof b.thumbnail_text === 'boolean') patch.thumbnail_text = b.thumbnail_text;
       if (['playfair', 'inter', 'cormorant'].includes(b.thumbnail_font)) patch.thumbnail_font = b.thumbnail_font;
@@ -437,7 +491,7 @@ const server = http.createServer(async (req, res) => {
       }
       const updated = await updateChannel(ch.id, patch);
       // Si la fenêtre horaire ou l'interrupteur du CRON a changé, on reprogramme.
-      if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch) setupScheduler().catch(() => {});
+      if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch || 'max_posts_per_day' in patch) setupScheduler().catch(() => {});
       return json(res, { ok: true, channel: channelPublicView(updated) });
     }
     if (req.method === 'POST' && path === '/api/test/discord') {
@@ -457,6 +511,12 @@ const server = http.createServer(async (req, res) => {
       if (!r.ok) return json(res, { ok: false, error: r.error });
       const updated = await updateChannel(ch.id, { playbook: r.playbook, playbook_updated_at: new Date().toISOString() });
       return json(res, { ok: true, playbook: r.playbook, errors: r.errors || [], channel: channelPublicView(updated) });
+    }
+    // Lance une analyse du coach maintenant (manuel) + rapport.
+    if (req.method === 'POST' && path === '/api/settings/coach-run') {
+      const r = await runCoach({ force: true });
+      if (!r.ok) return json(res, { ok: false, error: r.error });
+      return json(res, { ok: true, state: r.state, channel: channelPublicView(await getActiveChannel()) });
     }
     // Génère le plan SEO durable de la chaîne (piliers, mots-clés, vivier de hashtags, CTA…).
     if (req.method === 'POST' && path === '/api/settings/generate-seo-plan') {
@@ -516,4 +576,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Panel sur http://${HOST}:${PORT}`);
   setupScheduler().catch(e => console.error('[scheduler] init KO', e.message));
+  setupCoach().catch(e => console.error('[coach] init KO', e.message));
 });

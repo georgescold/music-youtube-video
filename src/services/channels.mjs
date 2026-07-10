@@ -26,7 +26,7 @@ export async function setActiveChannel(id) {
 }
 export async function updateChannel(id, patch) {
   const p = {};
-  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'yt_handle', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'background_mode', 'slideshow_count', 'reuse_gap',
+  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'yt_handle', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'coach_enabled', 'max_posts_per_day', 'coach_state', 'coach_updated_at', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'background_mode', 'slideshow_count', 'reuse_gap',
     'objective', 'product_desc', 'affiliate_url', 'affiliate_label', 'inspiration_urls', 'playbook', 'playbook_updated_at',
     'emotion_palette', 'emotion_cursor', 'emotion_palette_updated_at', 'seo_plan', 'seo_plan_updated_at'];
   for (const k of plain) if (k in patch) p[k] = patch[k];
@@ -56,6 +56,10 @@ export function channelPublicView(ch) {
     id: ch.id, name: ch.name, is_active: ch.is_active,
     publish_mode: ch.publish_mode || 'review',
     cron_enabled: !!ch.cron_enabled,
+    coach_enabled: !!ch.coach_enabled,
+    max_posts_per_day: ch.max_posts_per_day || 1,
+    coach_state: ch.coach_state || null,
+    coach_updated_at: ch.coach_updated_at || null,
     thumbnail_enabled: ch.thumbnail_enabled !== false,
     thumbnail_text: ch.thumbnail_text !== false,
     thumbnail_font: ch.thumbnail_font || 'playfair',

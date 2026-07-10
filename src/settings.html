@@ -239,6 +239,23 @@
     <div class="result" id="r-discord"></div>
   </div>
 
+  <h2>CRON intelligent (coach)</h2>
+  <div class="card">
+    <p class="hint" style="margin:-2px 0 14px">Analyse en continu les stats de la chaîne et prend des décisions : <b>warm-up</b> (cadence qui monte avec la maturité) et <b>optimisation du reach</b> (exploite les émotions/créneaux qui marchent tout en continuant à tester). Rapport quotidien sur Discord.</p>
+    <div class="field" style="margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px;font-weight:600;color:var(--color-ink)">
+        <input type="checkbox" id="f-coach_enabled" style="width:16px;height:16px;cursor:pointer">
+        Activer le coach (analyse quotidienne + décisions)
+      </label>
+    </div>
+    <div class="field" style="max-width:340px"><label>Cadence max (vidéos/jour, plafond du warm-up)</label><input id="f-max_posts_per_day" type="number" min="1" max="10"></div>
+    <div class="card-head" style="margin-top:8px">
+      <div><div class="card-title" style="font-size:13px">Analyse</div><div class="card-desc" id="coach-meta">Aucune analyse. Le coach a besoin de vidéos publiées avec des stats.</div></div>
+      <button class="btn btn-sec" id="coach-btn" type="button">Analyser maintenant</button>
+    </div>
+    <div id="coach-view" style="font-size:12.5px;color:var(--color-mut);white-space:pre-wrap;margin-top:8px"></div>
+  </div>
+
   <div class="savebar">
     <button class="btn" id="save">Enregistrer</button>
     <span id="savemsg"></span>
@@ -294,6 +311,9 @@ async function loadSettings() {
   renderEmotions(s.emotions);
   renderSeo(s.seo_plan, s.seo_plan_updated_at);
   $('f-cron_enabled').checked = !!s.cron_enabled;
+  $('f-coach_enabled').checked = !!s.coach_enabled;
+  $('f-max_posts_per_day').value = s.max_posts_per_day || 1;
+  renderCoach(s.coach_state);
   $('f-thumbnail_enabled').checked = s.thumbnail_enabled !== false;
   $('f-thumbnail_text').checked = s.thumbnail_text !== false;
   $('f-thumbnail_font').value = s.thumbnail_font || 'playfair';
@@ -327,7 +347,8 @@ $('save').onclick = async () => {
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
     objective: $('f-objective').value, product_desc: $('f-product_desc').value,
     affiliate_url: $('f-affiliate_url').value.trim(), affiliate_label: $('f-affiliate_label').value.trim(),
-    cron_enabled: $('f-cron_enabled').checked, thumbnail_enabled: $('f-thumbnail_enabled').checked,
+    cron_enabled: $('f-cron_enabled').checked, coach_enabled: $('f-coach_enabled').checked, max_posts_per_day: Number($('f-max_posts_per_day').value),
+    thumbnail_enabled: $('f-thumbnail_enabled').checked,
     thumbnail_text: $('f-thumbnail_text').checked, thumbnail_font: $('f-thumbnail_font').value,
     publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value
   };
@@ -395,6 +416,31 @@ function renderSeo(plan, updatedAt) {
     sec('Idées de CTA', plan.cta_ideas) +
     (plan.internal_linking ? '▸ Maillage interne\n   ' + plan.internal_linking : '');
 }
+
+function renderCoach(s) {
+  const meta = $('coach-meta'), view = $('coach-view');
+  if (!s) { view.textContent = ''; return; }
+  meta.textContent = `${s.published} publiées · ${s.sample_size} analysées · source ${s.metrics_source}` + (s.updated_at ? ' · ' + new Date(s.updated_at).toLocaleString('fr-FR') : '');
+  const parts = [];
+  if (s.best_emotion) parts.push('▸ Meilleure émotion : ' + s.best_emotion);
+  if (s.best_hour != null) parts.push('▸ Meilleur créneau : ' + s.best_hour + 'h');
+  if (s.best_duration_min) parts.push('▸ Meilleure durée : ~' + s.best_duration_min + ' min');
+  if (s.insights) parts.push('\n' + s.insights);
+  if ((s.recommendations || []).length) parts.push('\nDécisions :\n' + s.recommendations.map(x => '   • ' + x).join('\n'));
+  if (s.needs_reauth) parts.push('\n⚠️ Ré-autorise l\'accès YouTube (scope Analytics) pour le CTR/rétention.');
+  view.textContent = parts.join('\n');
+}
+
+$('coach-btn').onclick = async () => {
+  const btn = $('coach-btn'), meta = $('coach-meta');
+  btn.disabled = true; meta.textContent = 'Analyse en cours (collecte stats + décisions)…';
+  try {
+    const d = await (await fetch('/api/settings/coach-run', { method: 'POST' })).json();
+    if (d.ok) renderCoach(d.state);
+    else meta.textContent = 'Échec : ' + (d.error || 'inconnu');
+  } catch (e) { meta.textContent = 'Erreur réseau'; }
+  btn.disabled = false;
+};
 
 $('seo-btn').onclick = async () => {
   const btn = $('seo-btn'), meta = $('seo-meta');
