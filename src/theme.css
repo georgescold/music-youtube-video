@@ -17,8 +17,10 @@
 :root[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator,
 :root[data-theme="dark"] input[type="number"] { color-scheme: dark; }
 
-/* Bouton bascule de thème (réutilise .btn-ghost des pages). */
-.theme-toggle { cursor: pointer; line-height: 1; padding: 6px 11px; font-size: 14px; }
+/* Bouton bascule de thème (icône SVG centrée, réutilise .btn-ghost des pages). */
+.theme-toggle { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; line-height: 0; color: var(--color-mut); }
+.theme-toggle:hover { color: var(--color-ink); }
+.theme-toggle svg { display: block; }
 
 /* Header : assez de largeur pour respirer avec le sélecteur de chaîne, écarts unifiés entre les pages. */
 .topbar-inner { max-width: 1140px !important; gap: 20px; }

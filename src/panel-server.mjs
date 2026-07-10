@@ -223,7 +223,7 @@ button:disabled{opacity:.5}
 <link rel="stylesheet" href="/theme.css">
 <script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 </head><body>
-<button class="theme-toggle" type="button" aria-label="Thème">🌙</button>
+<button class="theme-toggle" type="button" aria-label="Thème"></button>
 <div class="card">
   <img src="/logo.png" alt="" style="height:24px;display:block;margin-bottom:16px">
   <h1>${signup ? 'Crée ton compte' : 'The Playlist Youtube'}</h1>
