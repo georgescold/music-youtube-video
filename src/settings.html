@@ -12,53 +12,53 @@
     --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
     --color-paper: #ffffff; --color-soft: #faf8f4; --color-soft2: #f2efe9;
     --color-ink: #181715; --color-mut: #6e6a62; --color-mut2: #a6a199;
-    --color-rule: #ece9e3; --color-rule2: #dedad2;
-    --ok: #3f7a55; --ko: #b3413a;
+    --color-rule: #ece9e3; --color-rule2: #dedad2; --ok: #3f7a55; --ko: #b3413a;
   }
   html { color-scheme: light; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; }
-  .tnum { font-variant-numeric: tabular-nums; }
   .topbar { border-bottom: 1px solid var(--color-rule); }
   .topbar-inner { max-width: 880px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
-  .brand { font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
+  .brand { font-weight: 700; font-size: 14px; }
   .topbar-right { display: flex; align-items: center; gap: 14px; }
-  .nav { display: flex; align-items: center; gap: 4px; }
+  .nav { display: flex; gap: 4px; }
   .nav a { color: var(--color-mut); font-size: 13px; font-weight: 600; text-decoration: none; padding: 6px 12px; border-radius: 100px; }
   .nav a:hover { color: var(--color-ink); background: var(--color-soft); }
   .nav a.active { color: var(--color-ink); background: var(--color-soft2); }
-  .btn-ghost { display: inline-flex; align-items: center; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-rule2); border-radius: 100px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; text-decoration: none; }
-  .btn-ghost:hover { background: var(--color-soft); border-color: var(--color-ink); }
+  .btn-ghost { background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-rule2); border-radius: 100px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; text-decoration: none; }
   .wrap { max-width: 880px; margin: 0 auto; padding: 32px 24px 64px; }
-  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
-  .page-sub { color: var(--color-mut); font-size: 13px; margin: 0 0 28px; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+  .page-sub { color: var(--color-mut); font-size: 13px; margin: 0 0 22px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--color-mut); font-weight: 700; margin: 24px 0 12px; }
 
+  .chanbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  select, input { font-family: var(--font-sans); font-size: 13.5px; color: var(--color-ink); background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; padding: 9px 11px; outline: none; }
+  select:focus, input:focus { border-color: var(--color-ink); }
   .card { background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
-  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
   .card-title { font-weight: 700; font-size: 14px; }
-  .card-desc { color: var(--color-mut); font-size: 12.5px; margin-top: 3px; }
-  .val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--color-mut); margin-top: 8px; }
-  .btn { background: var(--color-ink); color: var(--color-paper); border: 0; border-radius: 100px; padding: 8px 16px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
-  .btn:disabled { opacity: .5; cursor: default; }
-  .result { font-size: 12.5px; margin-top: 12px; min-height: 1.2em; display: flex; align-items: center; gap: 7px; }
-  .result.ok { color: var(--ok); }
-  .result.ko { color: var(--ko); }
-  .dot { width: 8px; height: 8px; border-radius: 100px; flex-shrink: 0; }
-  .dot.ok { background: var(--ok); } .dot.ko { background: var(--ko); }
-  .note { background: var(--color-soft); border: 1px solid var(--color-rule); border-radius: 10px; padding: 14px 16px; font-size: 12.5px; color: var(--color-mut); margin-top: 22px; }
-  .note b { color: var(--color-ink); }
+  .field { margin-bottom: 11px; }
+  .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--color-mut); margin-bottom: 5px; }
+  .field input { width: 100%; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+  .btn { background: var(--color-ink); color: var(--color-paper); border: 0; border-radius: 100px; padding: 8px 16px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
+  .btn:disabled { opacity: .5; }
+  .btn-sec { background: var(--color-paper); border: 1px solid var(--color-rule2); color: var(--color-ink); }
+  .result { font-size: 12.5px; margin-top: 10px; min-height: 1.1em; display: flex; align-items: center; gap: 7px; }
+  .result.ok { color: var(--ok); } .result.ko { color: var(--ko); }
+  .dot { width: 8px; height: 8px; border-radius: 100px; } .dot.ok { background: var(--ok); } .dot.ko { background: var(--ko); }
+  .hint { font-size: 11.5px; color: var(--color-mut2); margin-top: 4px; }
+  .savebar { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--color-paper) 40%); padding: 16px 0 4px; display: flex; align-items: center; gap: 12px; }
+  #savemsg { font-size: 12.5px; color: var(--color-mut); }
 </style>
 </head>
 <body>
 <div class="topbar">
   <div class="topbar-inner">
-    <span class="brand">The Playlist Youtube</span>
+    <span class="brand"><img src="/logo.png" alt="YouTube" style="height:18px;vertical-align:-3px;margin-right:8px">The Playlist Youtube</span>
     <div class="topbar-right">
       <nav class="nav">
-        <a href="/videos">Vidéos</a>
-        <a href="/">Assets</a>
-        <a href="/references">Chansons de référence</a>
-        <a href="/settings" class="active">Paramètres</a>
+        <a href="/videos">Vidéos</a><a href="/">Assets</a><a href="/references">Chansons de référence</a><a href="/settings" class="active">Paramètres</a>
       </nav>
       <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
     </div>
@@ -66,61 +66,129 @@
 </div>
 <div class="wrap">
   <h1>Paramètres</h1>
-  <p class="page-sub">Vérifie que chaque connexion fonctionne. Un test réel est envoyé au fournisseur.</p>
+  <p class="page-sub">Configure les clés de cette chaîne, teste-les, et gère plusieurs chaînes. Les clés sont chiffrées avant stockage.</p>
 
-  <div class="card" id="card-youtube">
-    <div class="card-head">
-      <div><div class="card-title">YouTube</div><div class="card-desc">Compte propriétaire de la chaîne (upload des vidéos).</div><div class="val" id="v-youtube">…</div></div>
-      <button class="btn" data-p="youtube">Tester la connexion</button>
+  <h2>Chaîne active</h2>
+  <div class="chanbar">
+    <select id="chan-select"></select>
+    <button class="btn btn-sec" id="chan-new">+ Nouvelle chaîne</button>
+  </div>
+  <div class="field" style="max-width:380px"><label>Nom de la chaîne</label><input id="f-name"></div>
+
+  <h2>YouTube</h2>
+  <div class="card">
+    <div class="card-head"><span class="card-title">Compte YouTube (upload)</span><button class="btn btn-sec" data-test="youtube">Tester</button></div>
+    <div class="grid2">
+      <div class="field"><label>Client ID (OAuth)</label><input id="f-yt_client_id" placeholder="....apps.googleusercontent.com"></div>
+      <div class="field"><label>Channel ID</label><input id="f-yt_channel_id" placeholder="UC..."></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Client secret</label><input id="f-yt_client_secret" type="password" autocomplete="off"><div class="hint" id="h-yt_client_secret"></div></div>
+      <div class="field"><label>Refresh token</label><input id="f-yt_refresh_token" type="password" autocomplete="off"><div class="hint" id="h-yt_refresh_token"></div></div>
     </div>
     <div class="result" id="r-youtube"></div>
   </div>
 
-  <div class="card" id="card-epidemic">
-    <div class="card-head">
-      <div><div class="card-title">Epidemic Sound</div><div class="card-desc">Accès au catalogue musical (curation + téléchargement).</div><div class="val" id="v-epidemic">…</div></div>
-      <button class="btn" data-p="epidemic">Tester la connexion</button>
-    </div>
+  <h2>Epidemic Sound</h2>
+  <div class="card">
+    <div class="card-head"><span class="card-title">Accès catalogue musical</span><button class="btn btn-sec" data-test="epidemic">Tester</button></div>
+    <div class="field"><label>Token API (JWT)</label><input id="f-epidemic_jwt" type="password" autocomplete="off"><div class="hint" id="h-epidemic_jwt"></div></div>
     <div class="result" id="r-epidemic"></div>
   </div>
 
-  <div class="card" id="card-claude">
-    <div class="card-head">
-      <div><div class="card-title">Claude</div><div class="card-desc">Génération des titres, descriptions et curation.</div><div class="val" id="v-claude">…</div></div>
-      <button class="btn" data-p="claude">Tester la connexion</button>
-    </div>
+  <h2>Claude</h2>
+  <div class="card">
+    <div class="card-head"><span class="card-title">Génération titres/description/curation</span><button class="btn btn-sec" data-test="claude">Tester</button></div>
+    <div class="field"><label>Token OAuth (sk-ant-oat01-…)</label><input id="f-claude_token" type="password" autocomplete="off"><div class="hint" id="h-claude_token"></div></div>
     <div class="result" id="r-claude"></div>
   </div>
 
-  <div class="note">
-    <b>Bientôt :</b> édition des clés par chaîne, gestion de plusieurs chaînes et comptes utilisateurs. Pour l'instant cette page teste les clés de la chaîne active.
+  <h2>Réglages de publication</h2>
+  <div class="card">
+    <div class="grid2">
+      <div class="field"><label>Heure de génération quotidienne</label><input id="f-daily_publish_time" type="time"></div>
+      <div class="field"><label>Durée cible (minutes)</label><input id="f-target_min" type="number" min="10" max="240"></div>
+    </div>
+    <div class="field"><label>Lien Compaatible / base UTM</label><input id="f-utm_base" placeholder="https://compaatible.app/"></div>
+  </div>
+
+  <h2>Publicités dans la vidéo</h2>
+  <div class="card">
+    <p class="hint" style="margin:-2px 0 12px">Les assets « Publicité » apparaissent au début, à la fin, et à intervalles réguliers. Les assets « Fond » remplissent l'écran (répartis équitablement si plusieurs).</p>
+    <div class="grid2">
+      <div class="field"><label>Fréquence des pubs (minutes)</label><input id="f-ad_freq" type="number" min="1" max="60"></div>
+      <div class="field"><label>Durée d'une apparition (secondes)</label><input id="f-ad_dur" type="number" min="2" max="60"></div>
+    </div>
+  </div>
+
+  <div class="savebar">
+    <button class="btn" id="save">Enregistrer</button>
+    <span id="savemsg"></span>
   </div>
 </div>
 
 <script>
 document.getElementById('logout').onclick = async (e) => { e.preventDefault(); await fetch('/api/auth/logout', { method: 'POST' }); location.href = '/login'; };
+const $ = id => document.getElementById(id);
 
-async function loadState() {
-  const s = await (await fetch('/api/settings')).json();
-  document.getElementById('v-youtube').textContent = s.youtube.configured ? ('client ' + s.youtube.clientId + (s.youtube.channelId ? ' · ' + s.youtube.channelId : '')) : 'non configuré';
-  document.getElementById('v-epidemic').textContent = s.epidemic.configured ? ('token ' + s.epidemic.jwt) : 'non configuré';
-  document.getElementById('v-claude').textContent = s.claude.configured ? ('token ' + s.claude.token) : 'non configuré';
+async function loadChannels() {
+  const d = await (await fetch('/api/channels')).json();
+  const sel = $('chan-select'); sel.innerHTML = '';
+  for (const c of d.channels) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name + (c.is_active ? '' : ''); if (c.id === d.activeId) o.selected = true; sel.appendChild(o); }
+}
+$('chan-select').onchange = async () => { await fetch('/api/channels/select', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: $('chan-select').value }) }); location.reload(); };
+$('chan-new').onclick = async () => { const name = prompt('Nom de la nouvelle chaîne ?'); if (!name) return; await fetch('/api/channels/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }); location.reload(); };
+
+function secretHint(id, configured, m) {
+  $('f-' + id).placeholder = configured ? '•••• configuré — laisse vide pour ne pas changer' : 'non configuré';
+  $('h-' + id).textContent = configured ? ('actuel : ' + (m || '••••')) : '';
 }
 
-for (const btn of document.querySelectorAll('.btn[data-p]')) {
+async function loadSettings() {
+  const s = await (await fetch('/api/settings')).json();
+  if (!s || !s.id) return;
+  $('f-name').value = s.name || '';
+  $('f-yt_client_id').value = s.youtube.clientId || '';
+  $('f-yt_channel_id').value = s.youtube.channelId || '';
+  secretHint('yt_client_secret', s.youtube.hasSecret);
+  secretHint('yt_refresh_token', s.youtube.hasRefresh);
+  secretHint('epidemic_jwt', s.epidemic.configured, s.epidemic.mask);
+  secretHint('claude_token', s.claude.configured, s.claude.mask);
+  $('f-daily_publish_time').value = (s.settings.daily_publish_time || '18:00').slice(0, 5);
+  $('f-target_min').value = Math.round((s.settings.target_duration_sec || 5400) / 60);
+  $('f-utm_base').value = s.settings.utm_base || '';
+  $('f-ad_freq').value = s.settings.ad_frequency_min ?? 10;
+  $('f-ad_dur').value = s.settings.ad_duration_sec ?? 8;
+}
+
+$('save').onclick = async () => {
+  $('save').disabled = true; $('savemsg').textContent = 'Enregistrement…';
+  const body = {
+    name: $('f-name').value, yt_client_id: $('f-yt_client_id').value, yt_channel_id: $('f-yt_channel_id').value,
+    yt_client_secret: $('f-yt_client_secret').value, yt_refresh_token: $('f-yt_refresh_token').value,
+    epidemic_jwt: $('f-epidemic_jwt').value, claude_token: $('f-claude_token').value,
+    daily_publish_time: $('f-daily_publish_time').value, target_duration_sec: Number($('f-target_min').value) * 60, utm_base: $('f-utm_base').value,
+    ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value)
+  };
+  const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+  $('save').disabled = false;
+  if (d.ok) { $('savemsg').textContent = 'Enregistré ✓'; ['yt_client_secret', 'yt_refresh_token', 'epidemic_jwt', 'claude_token'].forEach(k => $('f-' + k).value = ''); loadSettings(); }
+  else $('savemsg').textContent = 'Erreur : ' + (d.error || '');
+};
+
+for (const btn of document.querySelectorAll('[data-test]')) {
   btn.onclick = async () => {
-    const p = btn.dataset.p;
-    const r = document.getElementById('r-' + p);
-    btn.disabled = true; r.className = 'result'; r.innerHTML = 'Test en cours…';
+    const p = btn.dataset.test, r = $('r-' + p);
+    btn.disabled = true; r.className = 'result'; r.textContent = 'Test en cours…';
     try {
       const d = await (await fetch('/api/test/' + p, { method: 'POST' })).json();
       r.className = 'result ' + (d.ok ? 'ok' : 'ko');
       r.innerHTML = '<span class="dot ' + (d.ok ? 'ok' : 'ko') + '"></span>' + (d.ok ? 'Connexion validée' : 'Échec') + ' — ' + (d.detail || '');
-    } catch (e) { r.className = 'result ko'; r.innerHTML = '<span class="dot ko"></span>Erreur réseau'; }
+    } catch (e) { r.className = 'result ko'; r.textContent = 'Erreur réseau'; }
     btn.disabled = false;
   };
 }
-loadState();
+(async () => { await loadChannels(); await loadSettings(); })();
 </script>
 </body>
 </html>

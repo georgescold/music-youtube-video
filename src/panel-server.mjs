@@ -10,6 +10,7 @@ import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, stor
 import { runPipeline } from './pipeline.mjs';
 import { setPrivacyStatus, deleteVideo } from './services/youtube.mjs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
+import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView } from './services/channels.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -139,6 +140,7 @@ button:disabled{opacity:.5}
 .err{color:var(--danger)}.ok{color:var(--success)}
 </style></head><body>
 <div class="card">
+  <img src="/logo.png" alt="" style="height:24px;display:block;margin-bottom:16px">
   <h1>${signup ? 'Crée ton compte' : 'The Playlist Youtube'}</h1>
   <p class="sub">${signup ? 'Premier compte = propriétaire du panneau.' : 'Connexion au panneau'}</p>
   <form id="f">
@@ -167,6 +169,9 @@ const server = http.createServer(async (req, res) => {
     const path = url.pathname;
     const q = url.searchParams;
 
+    if (req.method === 'GET' && path === '/logo.png') {
+      return readFile(join(__dirname, 'logo.png')).then(b => send(res, 200, 'image/png', b)).catch(() => send(res, 404, 'text/plain', ''));
+    }
     if (req.method === 'GET' && path === '/login') return send(res, 200, 'text/html; charset=utf-8', authPage('login'));
     if (req.method === 'GET' && path === '/signup') return send(res, 200, 'text/html; charset=utf-8', authPage(loadUsers().length ? 'login' : 'signup'));
     if (req.method === 'POST' && path === '/api/auth/signup') {
@@ -210,7 +215,8 @@ const server = http.createServer(async (req, res) => {
 
     // ── Assets ──
     if (req.method === 'GET' && path === '/api/assets') {
-      const rows = await dbSelect('assets', '?order=uploaded_at.desc');
+      const ch = await getActiveChannel();
+      const rows = await dbSelect('assets', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=uploaded_at.desc');
       const withUrls = await Promise.all(rows.map(async r => ({ ...r, url: await storageSign('assets', r.storage_path).catch(() => null) })));
       return json(res, withUrls);
     }
@@ -230,7 +236,8 @@ const server = http.createServer(async (req, res) => {
       const storagePath = `${kind}/${Date.now()}-${randomBytes(4).toString('hex')}.${ext}`;
       try {
         await storageUpload('assets', storagePath, buffer, contentType);
-        const [row] = await dbInsert('assets', [{ kind, filename, storage_path: storagePath, mime_type: contentType, size_bytes: size }]);
+        const ch = await getActiveChannel();
+        const [row] = await dbInsert('assets', [{ kind, filename, storage_path: storagePath, mime_type: contentType, size_bytes: size, channel_id: ch?.id || null }]);
         return json(res, { ok: true, asset: row });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
@@ -252,7 +259,8 @@ const server = http.createServer(async (req, res) => {
 
     // ── Chansons de référence ──
     if (req.method === 'GET' && path === '/api/references') {
-      const rows = await dbSelect('reference_songs', '?order=added_at.desc');
+      const ch = await getActiveChannel();
+      const rows = await dbSelect('reference_songs', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=added_at.desc');
       return json(res, rows);
     }
     if (req.method === 'POST' && path === '/api/references') {
@@ -271,7 +279,8 @@ const server = http.createServer(async (req, res) => {
             if (oembed?.title) title = oembed.title;
           } catch {}
         }
-        const [row] = await dbInsert('reference_songs', [{ spotify_url: spotifyUrl, title, artist, mood_tags: moodTags }]);
+        const ch = await getActiveChannel();
+        const [row] = await dbInsert('reference_songs', [{ spotify_url: spotifyUrl, title, artist, mood_tags: moodTags, channel_id: ch?.id || null }]);
         return json(res, { ok: true, reference: row });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
@@ -290,7 +299,8 @@ const server = http.createServer(async (req, res) => {
 
     // ── Videos ──
     if (req.method === 'GET' && path === '/api/videos') {
-      const rows = await dbSelect('videos', '?order=created_at.desc&limit=50');
+      const ch = await getActiveChannel();
+      const rows = await dbSelect('videos', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=created_at.desc&limit=50');
       return json(res, rows);
     }
     if (req.method === 'GET' && path === '/api/videos/status') {
@@ -335,24 +345,44 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
 
-    // ── Paramètres : état + tests de connexion (chaîne courante = credentials d'environnement pour l'instant) ──
+    // ── Chaînes ──
+    if (req.method === 'GET' && path === '/api/channels') {
+      const chans = await listChannels();
+      return json(res, { channels: chans.map(c => ({ id: c.id, name: c.name, is_active: c.is_active })), activeId: (chans.find(c => c.is_active) || chans[0])?.id || null });
+    }
+    if (req.method === 'POST' && path === '/api/channels/create') {
+      const b = await readJsonBody(req); const ch = await createChannel(b.name); return json(res, { ok: true, id: ch.id });
+    }
+    if (req.method === 'POST' && path === '/api/channels/select') {
+      const b = await readJsonBody(req); if (!b.id) return json(res, { ok: false, error: 'id requis' }); await setActiveChannel(b.id); return json(res, { ok: true });
+    }
+
+    // ── Paramètres (chaîne active) ──
     if (req.method === 'GET' && path === '/api/settings') {
-      const mask = v => v ? (String(v).slice(0, 4) + '…' + String(v).slice(-4)) : null;
-      return json(res, {
-        youtube: { configured: !!process.env.YOUTUBE_REFRESH_TOKEN, clientId: mask(process.env.YOUTUBE_CLIENT_ID), channelId: process.env.YOUTUBE_CHANNEL_ID || null },
-        epidemic: { configured: !!process.env.EPIDEMIC_JWT, jwt: mask(process.env.EPIDEMIC_JWT) },
-        claude: { configured: !!process.env.CLAUDE_CODE_OAUTH_TOKEN, token: mask(process.env.CLAUDE_CODE_OAUTH_TOKEN) },
-        schedule: { daily_publish_time: (await dbSelect('settings', '?limit=1').catch(() => []))[0]?.daily_publish_time || '18:00' }
-      });
+      return json(res, channelPublicView(await getActiveChannel()) || {});
     }
-    if (req.method === 'POST' && path === '/api/test/youtube') {
-      return json(res, await testYouTube({ clientId: process.env.YOUTUBE_CLIENT_ID, clientSecret: process.env.YOUTUBE_CLIENT_SECRET, refreshToken: process.env.YOUTUBE_REFRESH_TOKEN }));
+    if (req.method === 'POST' && path === '/api/settings/save') {
+      const b = await readJsonBody(req);
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { ok: false, error: 'aucune chaîne active' });
+      const patch = {};
+      for (const k of ['name', 'yt_client_id', 'yt_channel_id', 'utm_base']) if (typeof b[k] === 'string') patch[k] = b[k].trim();
+      if (b.daily_publish_time) patch.daily_publish_time = b.daily_publish_time;
+      if (b.target_duration_sec) patch.target_duration_sec = Math.max(600, Number(b.target_duration_sec) || 5400);
+      if (b.ad_frequency_min != null) patch.ad_frequency_min = Math.max(1, Number(b.ad_frequency_min) || 10);
+      if (b.ad_duration_sec != null) patch.ad_duration_sec = Math.max(2, Number(b.ad_duration_sec) || 8);
+      // Secrets : mis à jour uniquement si une nouvelle valeur non vide est fournie (sinon on conserve l'existant).
+      for (const [field, incoming] of [['yt_client_secret', b.yt_client_secret], ['yt_refresh_token', b.yt_refresh_token], ['epidemic_jwt', b.epidemic_jwt], ['claude_token', b.claude_token]]) {
+        if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
+      }
+      const updated = await updateChannel(ch.id, patch);
+      return json(res, { ok: true, channel: channelPublicView(updated) });
     }
-    if (req.method === 'POST' && path === '/api/test/epidemic') {
-      return json(res, await testEpidemic(process.env.EPIDEMIC_JWT));
-    }
-    if (req.method === 'POST' && path === '/api/test/claude') {
-      return json(res, await testClaude(process.env.CLAUDE_CODE_OAUTH_TOKEN));
+    if (req.method === 'POST' && (path === '/api/test/youtube' || path === '/api/test/epidemic' || path === '/api/test/claude')) {
+      const creds = channelCreds(await getActiveChannel());
+      if (path.endsWith('youtube')) return json(res, await testYouTube(creds.youtube || {}));
+      if (path.endsWith('epidemic')) return json(res, await testEpidemic(creds.epidemicJwt));
+      return json(res, await testClaude(creds.claudeToken));
     }
 
     send(res, 404, 'text/plain', 'Not found');
