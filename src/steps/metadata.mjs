@@ -19,31 +19,35 @@ function normTitle(t) {
 
 export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, channelHandle = '', channelName = '', log = () => {} }) {
   const pb = strategy.playbook || {};
+  // Contexte SEO adaptatif : le domaine/ton vient de la chaîne (objectif + produit), pas d'un thème présupposé.
+  const hasContext = !!(strategy.objective || strategy.product_desc || pb.title_patterns?.length);
+  const contextLine = (strategy.objective || strategy.product_desc)
+    ? 'CONTEXTE DE LA CHAÎNE : ' + [strategy.objective, strategy.product_desc && ('Produit promu : ' + strategy.product_desc)].filter(Boolean).join(' — ')
+    : "CONTEXTE PAR DÉFAUT (aucun renseigné) : chaîne de playlists de musique d'amour francophone.";
   const system = [
-    "Tu es un expert du SEO YouTube pour les chaînes de playlists de musique d'amour francophones.",
-    "Le format qui marche : un TITRE émotionnel à la 2e personne (style « POV : ... » ou scénario intime), en français, avec la balise [Playlist].",
-    "Le titre doit être le plus deep et émotionnel possible, et TOUJOURS différent des titres déjà publiés.",
+    "Tu es un expert du SEO YouTube pour les chaînes de playlists.",
+    contextLine,
+    "SEO ADAPTATIF : cale le TON, le champ lexical, les mots-clés, hashtags et tags sur LE DOMAINE, l'objectif ET LA LANGUE de cette chaîne. Ne présuppose aucun thème générique.",
+    "Format de titre performant : titre émotionnel à la 2e personne (« POV : ... » ou scénario intime), avec la balise [Playlist]. Le plus deep et émotionnel possible, TOUJOURS différent des titres déjà publiés.",
     emotion ? `ÉMOTION IMPOSÉE de cette vidéo : « ${emotion.name} » (${emotion.description}). Le titre DOIT capturer PRÉCISÉMENT cette émotion, pas une autre.` : '',
-    strategy.objective ? `Objectif de la chaîne : ${strategy.objective}` : '',
-    strategy.product_desc ? `Produit à mettre en valeur (pour orienter le champ lexical, sans le citer dans le titre) : ${strategy.product_desc}` : '',
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."
   ].filter(Boolean).join('\n');
 
   const avoidSet = new Set(avoidTitles.map(normTitle));
   const buildUser = (extraAvoid = []) => [
-    `Ambiance de la playlist : ${mood}.`,
-    `Voici des exemples de tons de titres appréciés (inspire-toi du style, n'en recopie aucun mot pour mot) :`,
-    TITLE_SEEDS.map(s => '- ' + s).join('\n'),
-    pb.title_patterns?.length ? '\nFormules de titres qui marchent sur les chaînes d\'inspiration (applique l\'esprit, pas le copier-coller) :\n' + pb.title_patterns.slice(0, 10).map(s => '- ' + s).join('\n') : '',
+    `Ambiance / mood de la playlist : ${mood}.`,
+    // Les exemples "amour" ne servent que faute de contexte propre à la chaîne (sinon ils biaiseraient un autre domaine).
+    !hasContext ? 'Exemples de tons de titres appréciés (inspire-toi du style, adapte au domaine de la chaîne, ne recopie aucun mot pour mot) :\n' + TITLE_SEEDS.map(s => '- ' + s).join('\n') : '',
+    pb.title_patterns?.length ? 'Formules de titres qui marchent sur les chaînes modèles (applique l\'esprit, pas le copier-coller) :\n' + pb.title_patterns.slice(0, 10).map(s => '- ' + s).join('\n') : '',
     pb.emotional_hooks?.length ? 'Déclencheurs émotionnels à exploiter : ' + pb.emotional_hooks.slice(0, 12).join(', ') : '',
     (avoidTitles.length || extraAvoid.length) ? '\nNe RÉUTILISE JAMAIS aucun de ces titres déjà publiés (ni une variante quasi identique) :' : '',
     [...avoidTitles, ...extraAvoid].slice(-40).map(s => '- ' + s).join('\n'),
     '',
-    'Génère :',
-    '- "title" : un titre YouTube accrocheur (60-70 caractères max), en français, incluant [Playlist].',
-    '- "hook" : 2-3 phrases d\'accroche émotionnelle pour le début de la description.',
-    '- "keywords" : 12 à 18 mots-clés SEO en français (chaînes courtes).',
-    '- "hashtags" : 8 hashtags pertinents (sans le #, juste le mot).',
+    'Génère (dans la langue de la chaîne) :',
+    '- "title" : un titre YouTube accrocheur (60-70 caractères max), incluant [Playlist].',
+    '- "hook" : 2-3 phrases d\'accroche pour le début de la description, cohérentes avec le positionnement de la chaîne.',
+    '- "keywords" : 12 à 18 mots-clés SEO adaptés au domaine (chaînes courtes).',
+    '- "hashtags" : 8 hashtags pertinents pour ce domaine (sans le #, juste le mot).',
     '- "tags" : 10 tags YouTube (mots ou expressions courtes).',
     '',
     'Format EXACT : {"title":"...","hook":"...","keywords":["..."],"hashtags":["..."],"tags":["..."]}'
