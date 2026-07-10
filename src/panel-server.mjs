@@ -47,23 +47,29 @@ function generateOnce({ dryRun = false } = {}) {
   return true;
 }
 
-function msUntilNextDaily(hhmm) {
-  const [h, m] = String(hhmm || '18:00').split(':').map(Number);
+function toMinOfDay(hhmm) { const [h, m] = String(hhmm || '18:00').slice(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); }
+// Tire une heure au hasard dans la fenêtre [start, end] (gère le passage minuit) et renvoie le délai jusqu'à la prochaine occurrence.
+function msUntilNextDaily(start, end) {
+  let a = toMinOfDay(start), b = toMinOfDay(end);
+  if (b < a) b += 1440; // fenêtre qui déborde sur le lendemain
+  const pick = a + Math.floor(Math.random() * (b - a + 1)); // minutes depuis minuit (peut dépasser 1440)
   const now = new Date();
-  const next = new Date(now); next.setHours(h || 18, m || 0, 0, 0);
+  const next = new Date(now); next.setHours(0, 0, 0, 0); next.setMinutes(pick);
   if (next <= now) next.setDate(next.getDate() + 1);
-  return next - now;
+  return { wait: next - now, at: next };
 }
 async function setupScheduler() {
   if (genTimer) clearTimeout(genTimer);
-  const settings = (await dbSelect('settings', '?limit=1').catch(() => []))[0] || {};
-  const wait = msUntilNextDaily(settings.daily_publish_time);
+  const ch = await getActiveChannel().catch(() => null);
+  const start = ch?.publish_time_start || (ch?.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
+  const end = ch?.publish_time_end || start;
+  const { wait, at } = msUntilNextDaily(start, end);
   genTimer = setTimeout(async () => {
     console.log('[scheduler] génération quotidienne');
     generateOnce({ dryRun: false });
     setupScheduler();
   }, wait);
-  console.log(`[scheduler] prochaine génération dans ${Math.round(wait / 60000)} min (${settings.daily_publish_time || '18:00'} ${process.env.TZ})`);
+  console.log(`[scheduler] prochaine génération dans ${Math.round(wait / 60000)} min — ${at.toLocaleTimeString('fr-FR')} (fenêtre ${start}–${end} ${process.env.TZ})`);
 }
 
 // ── Comptes (email + mot de passe) + session par cookie signe (HMAC). 1er inscrit = proprietaire,
@@ -378,6 +384,18 @@ const server = http.createServer(async (req, res) => {
       for (const k of ['name', 'yt_client_id', 'yt_channel_id', 'utm_base']) if (typeof b[k] === 'string') patch[k] = b[k].trim();
       if (b.daily_publish_time) patch.daily_publish_time = b.daily_publish_time;
       if (b.target_duration_sec) patch.target_duration_sec = Math.max(600, Number(b.target_duration_sec) || 5400);
+      // Fourchettes (min/max en minutes depuis l'UI -> secondes). On garde min <= max.
+      if (b.target_min_min != null || b.target_max_min != null) {
+        let mn = Math.max(10, Math.min(240, Number(b.target_min_min) || 90));
+        let mx = Math.max(10, Math.min(240, Number(b.target_max_min) || mn));
+        if (mx < mn) [mn, mx] = [mx, mn];
+        patch.target_min_sec = mn * 60; patch.target_max_sec = mx * 60;
+        patch.target_duration_sec = mn * 60; // rétro-compat
+      }
+      const isHHMM = s => typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
+      if (isHHMM(b.publish_time_start)) patch.publish_time_start = b.publish_time_start;
+      if (isHHMM(b.publish_time_end)) patch.publish_time_end = b.publish_time_end;
+      if (isHHMM(b.publish_time_start)) patch.daily_publish_time = b.publish_time_start; // rétro-compat
       if (b.ad_frequency_min != null) patch.ad_frequency_min = Math.max(1, Number(b.ad_frequency_min) || 10);
       if (b.ad_duration_sec != null) patch.ad_duration_sec = Math.max(2, Number(b.ad_duration_sec) || 8);
       if (b.ad_placement && typeof b.ad_placement === 'object') patch.ad_placement = b.ad_placement;
@@ -393,6 +411,8 @@ const server = http.createServer(async (req, res) => {
         if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
       }
       const updated = await updateChannel(ch.id, patch);
+      // Si la fenêtre horaire a changé, on reprogramme la prochaine génération.
+      if (patch.publish_time_start || patch.publish_time_end) setupScheduler().catch(() => {});
       return json(res, { ok: true, channel: channelPublicView(updated) });
     }
     if (req.method === 'POST' && path === '/api/test/discord') {

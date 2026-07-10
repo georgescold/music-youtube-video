@@ -32,7 +32,12 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
   const backgroundAssets = assets.filter(a => a.kind === 'background');
   const adAssets = assets.filter(a => a.kind === 'ad');
 
-  const target = targetSec || channel?.target_duration_sec || 5400;
+  // Durée cible : tirée au hasard dans la fourchette [min, max] de la chaîne (arrondie à la minute).
+  const tMin = channel?.target_min_sec ?? channel?.target_duration_sec ?? 5400;
+  const tMax = channel?.target_max_sec ?? channel?.target_duration_sec ?? tMin;
+  const lo = Math.min(tMin, tMax), hi = Math.max(tMin, tMax);
+  const randomTarget = (Math.floor(lo / 60) + Math.floor(Math.random() * (Math.floor(hi / 60) - Math.floor(lo / 60) + 1))) * 60;
+  const target = targetSec || randomTarget;
   const mood = MOODS[dayIndex % MOODS.length];
 
   const [video] = await dbInsert('videos', [{

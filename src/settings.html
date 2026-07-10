@@ -105,9 +105,14 @@
 
   <h2>Réglages de publication</h2>
   <div class="card">
+    <p class="hint" style="margin:-2px 0 14px">L'heure et la durée sont des <b>fourchettes</b> : à chaque vidéo, le système tire une valeur au hasard entre le min et le max (mets la même valeur des deux côtés pour figer).</p>
     <div class="grid2">
-      <div class="field"><label>Heure de génération quotidienne</label><input id="f-daily_publish_time" type="time"></div>
-      <div class="field"><label>Durée cible (minutes)</label><input id="f-target_min" type="number" min="10" max="240"></div>
+      <div class="field"><label>Fenêtre horaire de génération (début → fin)</label>
+        <div style="display:flex;align-items:center;gap:8px"><input id="f-publish_time_start" type="time" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-publish_time_end" type="time" style="flex:1"></div>
+      </div>
+      <div class="field"><label>Durée cible (min → max, minutes)</label>
+        <div style="display:flex;align-items:center;gap:8px"><input id="f-target_min" type="number" min="10" max="240" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-target_max" type="number" min="10" max="240" style="flex:1"></div>
+      </div>
     </div>
     <div class="field"><label>Lien Compaatible / base UTM</label><input id="f-utm_base" placeholder="https://compaatible.app/"></div>
   </div>
@@ -190,8 +195,10 @@ async function loadSettings() {
   secretHint('yt_refresh_token', s.youtube.hasRefresh);
   secretHint('epidemic_jwt', s.epidemic.configured, s.epidemic.mask);
   secretHint('claude_token', s.claude.configured, s.claude.mask);
-  $('f-daily_publish_time').value = (s.settings.daily_publish_time || '18:00').slice(0, 5);
-  $('f-target_min').value = Math.round((s.settings.target_duration_sec || 5400) / 60);
+  $('f-publish_time_start').value = (s.settings.publish_time_start || '18:00').slice(0, 5);
+  $('f-publish_time_end').value = (s.settings.publish_time_end || s.settings.publish_time_start || '18:00').slice(0, 5);
+  $('f-target_min').value = Math.round((s.settings.target_min_sec || s.settings.target_duration_sec || 5400) / 60);
+  $('f-target_max').value = Math.round((s.settings.target_max_sec || s.settings.target_duration_sec || 5400) / 60);
   $('f-utm_base').value = s.settings.utm_base || '';
   $('f-ad_freq').value = s.settings.ad_frequency_min ?? 10;
   $('f-ad_dur').value = s.settings.ad_duration_sec ?? 8;
@@ -216,7 +223,8 @@ $('save').onclick = async () => {
     name: $('f-name').value, yt_client_id: $('f-yt_client_id').value, yt_channel_id: $('f-yt_channel_id').value,
     yt_client_secret: $('f-yt_client_secret').value, yt_refresh_token: $('f-yt_refresh_token').value,
     epidemic_jwt: $('f-epidemic_jwt').value, claude_token: $('f-claude_token').value,
-    daily_publish_time: $('f-daily_publish_time').value, target_duration_sec: Number($('f-target_min').value) * 60, utm_base: $('f-utm_base').value,
+    publish_time_start: $('f-publish_time_start').value, publish_time_end: $('f-publish_time_end').value,
+    target_min_min: Number($('f-target_min').value), target_max_min: Number($('f-target_max').value), utm_base: $('f-utm_base').value,
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
     ad_intro: $('f-ad_intro').checked, ad_outro: $('f-ad_outro').checked,
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
