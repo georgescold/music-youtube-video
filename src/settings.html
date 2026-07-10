@@ -105,9 +105,16 @@
     <div id="playbook-view" style="font-size:12.5px;color:var(--color-mut);white-space:pre-wrap;margin-top:6px"></div>
   </div>
 
-  <h2>Palette d'émotions</h2>
+  <h2>Émotion de la vidéo</h2>
   <div class="card">
-    <p class="hint" style="margin:-2px 0 14px">Dérivée de tes <b>vidéos références</b> + tes <b>chansons de référence</b>. Chaque vidéo est ancrée sur <b>une</b> émotion (rotation sans répétition) : titre, musiques et miniature centrés dessus.</p>
+    <div class="field" style="margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px;font-weight:600;color:var(--color-ink)">
+        <input type="checkbox" id="f-emotion_from_image" style="width:16px;height:16px;cursor:pointer">
+        Déduire l'émotion de l'image de fond (recommandé)
+      </label>
+      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Combo parfait : l'image que tu déposes détermine l'émotion → le titre et la musique sont en adéquation avec ce qu'on voit. Si décoché (ou pas d'image), on utilise la palette dérivée ci-dessous.</div>
+    </div>
+    <p class="hint" style="margin:-2px 0 14px">Palette de repli, dérivée de tes <b>vidéos références</b> + <b>chansons de référence</b> : utilisée quand il n'y a pas d'image ou que l'option ci-dessus est décochée (rotation sans répétition).</p>
     <div class="card-head">
       <div><div class="card-title" style="font-size:13px">Émotions</div><div class="card-desc" id="emotions-meta">Aucune palette. Ajoute des inspirations/références, enregistre, puis dérive.</div></div>
       <button class="btn btn-sec" id="derive-emotions-btn" type="button">Dériver</button>
@@ -309,6 +316,7 @@ async function loadSettings() {
   $('f-affiliate_url').value = st.affiliate_url || '';
   $('f-affiliate_label').value = st.affiliate_label || '';
   renderPlaybook(st.playbook, st.playbook_updated_at);
+  $('f-emotion_from_image').checked = !(s.emotions && s.emotions.from_image === false);
   renderEmotions(s.emotions);
   renderSeo(s.seo_plan, s.seo_plan_updated_at);
   $('f-cron_enabled').checked = !!s.cron_enabled;
@@ -348,6 +356,7 @@ $('save').onclick = async () => {
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
     objective: $('f-objective').value, product_desc: $('f-product_desc').value,
     affiliate_url: $('f-affiliate_url').value.trim(), affiliate_label: $('f-affiliate_label').value.trim(),
+    emotion_from_image: $('f-emotion_from_image').checked,
     cron_enabled: $('f-cron_enabled').checked, coach_enabled: $('f-coach_enabled').checked, max_posts_per_day: Number($('f-max_posts_per_day').value),
     thumbnail_enabled: $('f-thumbnail_enabled').checked,
     thumbnail_text: $('f-thumbnail_text').checked, thumbnail_font: $('f-thumbnail_font').value,

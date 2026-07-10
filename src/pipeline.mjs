@@ -10,7 +10,8 @@ import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaul
 import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus, setThumbnail, deleteVideo } from './services/youtube.mjs';
-import { getActiveChannel, updateChannel } from './services/channels.mjs';
+import { getActiveChannel, updateChannel, channelCreds } from './services/channels.mjs';
+import { analyzeImage } from './services/vision.mjs';
 import { chooseEmotionIndex } from './steps/coach.mjs';
 import { sendDiscord, COLORS } from './services/notify.mjs';
 
@@ -41,20 +42,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
   const randomTarget = (Math.floor(lo / 60) + Math.floor(Math.random() * (Math.floor(hi / 60) - Math.floor(lo / 60) + 1))) * 60;
   const target = targetSec || randomTarget;
 
-  // Émotion de la vidéo : rotation (couverture) + exploitation des émotions gagnantes si le coach a assez de données.
   const palette = Array.isArray(channel?.emotion_palette) ? channel.emotion_palette : [];
-  let emotion = null;
-  if (palette.length) {
-    const choice = chooseEmotionIndex({ palette, cursor: channel.emotion_cursor || 0, coachState: channel.coach_state || null, rnd: Math.random() });
-    emotion = palette[choice.index];
-    if (choice.exploit) log('émotion (exploitation coach) : ' + emotion?.name);
-    // On avance le curseur tout de suite (même si le run échoue) pour couvrir la palette en exploration.
-    await updateChannel(channel.id, { emotion_cursor: (channel.emotion_cursor || 0) + 1 }).catch(() => {});
-  }
-  const mood = emotion?.name || MOODS[dayIndex % MOODS.length];
 
   const [video] = await dbInsert('videos', [{
-    status: 'curating', mood, theme: mood, emotion: emotion?.name || null, channel_id: channel?.id || null,
+    status: 'curating', channel_id: channel?.id || null,
     reference_song_ids: references.map(r => r.id)
   }]);
   const vid = video.id;
@@ -66,9 +57,58 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
   let youtubeId = null, youtubeUrl = null; // hoisté pour le nettoyage en cas d'annulation
 
   try {
-    // 1. Curation
+    // 0. Fonds (anti-répétition) — choisis TÔT car l'image de fond pilote l'émotion.
+    const bgVideoAssets = backgroundAssets.filter(a => (a.mime_type || '').startsWith('video'));
+    const bgImageAssets = backgroundAssets.filter(a => !(a.mime_type || '').startsWith('video'));
+    let chosenBgAssets = backgroundAssets;
+    let bgWarning = null; // alerte "pas assez d'images" -> stockée sur la vidéo + Discord
+    if (bgImageAssets.length) {
+      const sel = await selectBackgrounds({
+        channelId: channel?.id, pool: bgImageAssets,
+        mode: channel?.background_mode || 'slideshow',
+        count: channel?.slideshow_count ?? 0,
+        gap: channel?.reuse_gap ?? 30
+      });
+      chosenBgAssets = [...bgVideoAssets, ...sel.chosen];
+      if (sel.warning) {
+        bgWarning = sel.warning;
+        await logStep('background', 'warn', sel.warning);
+        if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '⚠️ Images de fond', description: sel.warning, color: COLORS.warn }).catch(() => {});
+      }
+    }
+    const backgrounds = [];
+    for (const a of chosenBgAssets) backgrounds.push(await fetchAssetFile(a, workDir));
+    const primaryImagePath = backgrounds.find(b => !b.isVideo)?.path || null;
+    ck();
+
+    // Émotion : dérivée de l'IMAGE de fond (combo parfait image ↔ titre ↔ musique), sinon palette dérivée.
+    let emotion = null;
+    if (primaryImagePath && channel?.emotion_from_image !== false) {
+      try {
+        await logStep('vision', 'start', 'analyse de l\'image de fond');
+        const va = await analyzeImage(primaryImagePath, { token: channelCreds(channel).claudeToken });
+        if (va?.emotion) {
+          emotion = {
+            name: String(va.emotion).trim(),
+            description: [va.scene, va.style].filter(Boolean).join(' · '),
+            keywords: Array.isArray(va.mots_cles_musique) ? va.mots_cles_musique : []
+          };
+          await logStep('vision', 'ok', 'émotion de l\'image : ' + emotion.name);
+        }
+      } catch (e) { await logStep('vision', 'warn', e.message); }
+    }
+    if (!emotion && palette.length) { // repli : palette dérivée (rotation + coach)
+      const choice = chooseEmotionIndex({ palette, cursor: channel.emotion_cursor || 0, coachState: channel.coach_state || null, rnd: Math.random() });
+      emotion = palette[choice.index];
+      await updateChannel(channel.id, { emotion_cursor: (channel.emotion_cursor || 0) + 1 }).catch(() => {});
+      if (emotion) await logStep('emotion', 'ok', 'palette : ' + emotion.name);
+    }
+    const mood = emotion?.name || MOODS[dayIndex % MOODS.length];
+    await setStatus('curating', { emotion: emotion?.name || null, mood, theme: mood });
+    ck();
+
+    // 1. Curation (pilotée par l'émotion)
     await logStep('curate', 'start');
-    if (emotion) await logStep('emotion', 'ok', emotion.name);
     const curation = await curatePlaylist({
       references: references.map(r => ({ spotify_url: r.spotify_url, title: r.title, mood_tags: r.mood_tags })),
       targetSec: target, moodHint: mood, emotion, controller, log
@@ -90,28 +130,6 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
     await logStep('render', 'start');
     const audioPath = await concatAudio(withPaths.map(t => t.path), join(workDir, 'mix.mp3'), { controller });
     const tracklist = buildTracklist(withPaths);
-
-    // Sélection des fonds : jamais réutilisés avant `reuse_gap` vidéos ; mode single/diaporama configurable.
-    const bgVideoAssets = backgroundAssets.filter(a => (a.mime_type || '').startsWith('video'));
-    const bgImageAssets = backgroundAssets.filter(a => !(a.mime_type || '').startsWith('video'));
-    let chosenBgAssets = backgroundAssets;
-    let bgWarning = null; // alerte "pas assez d'images" -> stockée sur la vidéo + Discord
-    if (bgImageAssets.length) {
-      const sel = await selectBackgrounds({
-        channelId: channel?.id, pool: bgImageAssets,
-        mode: channel?.background_mode || 'slideshow',
-        count: channel?.slideshow_count ?? 0,
-        gap: channel?.reuse_gap ?? 30
-      });
-      chosenBgAssets = [...bgVideoAssets, ...sel.chosen];
-      if (sel.warning) {
-        bgWarning = sel.warning;
-        await logStep('background', 'warn', sel.warning);
-        if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '⚠️ Images de fond', description: sel.warning, color: COLORS.warn }).catch(() => {});
-      }
-    }
-    const backgrounds = [];
-    for (const a of chosenBgAssets) backgrounds.push(await fetchAssetFile(a, workDir));
     const ads = [];
     for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
     const outPath = join(workDir, 'video.mp4');

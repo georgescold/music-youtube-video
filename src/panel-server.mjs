@@ -512,6 +512,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       if (typeof b.coach_enabled === 'boolean') patch.coach_enabled = b.coach_enabled;
       if (b.max_posts_per_day != null) patch.max_posts_per_day = Math.max(1, Math.min(10, Number(b.max_posts_per_day) || 1));
+      if (typeof b.emotion_from_image === 'boolean') patch.emotion_from_image = b.emotion_from_image;
       if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
       if (typeof b.thumbnail_text === 'boolean') patch.thumbnail_text = b.thumbnail_text;
       if (['playfair', 'inter', 'cormorant'].includes(b.thumbnail_font)) patch.thumbnail_font = b.thumbnail_font;

@@ -28,7 +28,7 @@ export async function updateChannel(id, patch) {
   const p = {};
   const plain = ['name', 'yt_client_id', 'yt_channel_id', 'yt_handle', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'coach_enabled', 'max_posts_per_day', 'coach_state', 'coach_updated_at', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'background_mode', 'slideshow_count', 'reuse_gap',
     'objective', 'product_desc', 'affiliate_url', 'affiliate_label', 'inspiration_urls', 'playbook', 'playbook_updated_at',
-    'emotion_palette', 'emotion_cursor', 'emotion_palette_updated_at', 'seo_plan', 'seo_plan_updated_at'];
+    'emotion_palette', 'emotion_cursor', 'emotion_palette_updated_at', 'emotion_from_image', 'seo_plan', 'seo_plan_updated_at'];
   for (const k of plain) if (k in patch) p[k] = patch[k];
   if (patch.ad_placement && typeof patch.ad_placement === 'object') {
     const q = patch.ad_placement, clamp = (v, d) => Math.min(1, Math.max(0, Number(v) ?? d));
@@ -72,7 +72,8 @@ export function channelPublicView(ch) {
     emotions: {
       palette: Array.isArray(ch.emotion_palette) ? ch.emotion_palette : [],
       cursor: ch.emotion_cursor || 0,
-      updated_at: ch.emotion_palette_updated_at || null
+      updated_at: ch.emotion_palette_updated_at || null,
+      from_image: ch.emotion_from_image !== false
     },
     seo_plan: ch.seo_plan || null,
     seo_plan_updated_at: ch.seo_plan_updated_at || null,
