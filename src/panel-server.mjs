@@ -11,6 +11,7 @@ import { runPipeline } from './pipeline.mjs';
 import { setPrivacyStatus, deleteVideo } from './services/youtube.mjs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
 import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView } from './services/channels.mjs';
+import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -382,12 +383,20 @@ const server = http.createServer(async (req, res) => {
       if (b.ad_placement && typeof b.ad_placement === 'object') patch.ad_placement = b.ad_placement;
       if (typeof b.ad_intro === 'boolean') patch.ad_intro = b.ad_intro;
       if (typeof b.ad_outro === 'boolean') patch.ad_outro = b.ad_outro;
+      if (typeof b.discord_webhook === 'string' && b.discord_webhook.trim()) { const w = b.discord_webhook.trim(); if (isDiscordWebhook(w)) patch.discord_webhook = w; else return json(res, { ok: false, error: 'Webhook Discord invalide (https://discord.com/api/webhooks/…)' }); }
+      if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
       // Secrets : mis à jour uniquement si une nouvelle valeur non vide est fournie (sinon on conserve l'existant).
       for (const [field, incoming] of [['yt_client_secret', b.yt_client_secret], ['yt_refresh_token', b.yt_refresh_token], ['epidemic_jwt', b.epidemic_jwt], ['claude_token', b.claude_token]]) {
         if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
       }
       const updated = await updateChannel(ch.id, patch);
       return json(res, { ok: true, channel: channelPublicView(updated) });
+    }
+    if (req.method === 'POST' && path === '/api/test/discord') {
+      const ch = await getActiveChannel();
+      if (!ch?.discord_webhook) return json(res, { ok: false, detail: 'aucun webhook configuré' });
+      const ok = await sendDiscord(ch.discord_webhook, { title: '🔔 Test — The Playlist Youtube', description: 'Le webhook de la chaîne « ' + (ch.name || '') + ' » est bien connecté.', color: COLORS.info });
+      return json(res, { ok, detail: ok ? 'message envoyé sur Discord' : 'échec de l\'envoi' });
     }
     if (req.method === 'POST' && (path === '/api/test/youtube' || path === '/api/test/epidemic' || path === '/api/test/claude')) {
       const creds = channelCreds(await getActiveChannel());

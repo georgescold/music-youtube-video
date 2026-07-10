@@ -1,0 +1,36 @@
+// Analyse d'image via le CLI Claude (forfait, vision par l'outil Read). Multi-tenant : opts.token.
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { resolveClaude, resolveModel, extractJson } from './claude.mjs';
+
+export function analyzeImage(imgPath, { token, model = 'sonnet' } = {}) {
+  return new Promise((resolve, reject) => {
+    const tok = token || process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    if (!tok) return reject(new Error('CLAUDE_CODE_OAUTH_TOKEN manquant'));
+    const bin = resolveClaude();
+    const args = ['-p', '--strict-mcp-config', '--no-session-persistence', '--allowedTools', 'Read', '--model', resolveModel(model)];
+    const env = { ...process.env };
+    for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_CODE_') && k !== 'CLAUDE_CODE_OAUTH_TOKEN') delete env[k];
+    env.CLAUDE_CODE_OAUTH_TOKEN = tok; delete env.CLAUDECODE;
+
+    let child;
+    try {
+      if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin)) {
+        const js = join(dirname(bin), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+        child = existsSync(js) ? spawn(process.execPath, [js, ...args], { env, windowsHide: true }) : spawn(bin, args, { env, windowsHide: true, shell: true });
+      } else child = spawn(bin, args, { env, windowsHide: true });
+    } catch (e) { return reject(e); }
+
+    let out = '', err = '';
+    child.stdout.on('data', d => out += d);
+    child.stderr.on('data', d => err += d);
+    child.on('error', e => reject(e));
+    child.on('close', code => {
+      if (code !== 0 || !out.trim()) return reject(new Error((err.trim() || out.trim() || ('claude exit ' + code)).slice(0, 300)));
+      try { resolve(extractJson(out)); } catch (e) { reject(e); }
+    });
+    child.stdin.on('error', () => {});
+    child.stdin.end(`Lis l'image située ici : ${imgPath}\nAnalyse-la et réponds UNIQUEMENT en JSON valide :\n{"style":"...","scene":"...","emotion":"...","couleurs":"...","mots_cles_musique":["...","..."]}\nEn français, précis. "mots_cles_musique" = 4 à 6 termes d'ambiance musicale EN ANGLAIS qui incarnent l'émotion de l'image (pour orienter une recherche de musique).`);
+  });
+}

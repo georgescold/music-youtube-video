@@ -8,8 +8,9 @@ import { curatePlaylist, durationSec } from './steps/curate.mjs';
 import { downloadAll } from './steps/download.mjs';
 import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground } from './services/ffmpeg.mjs';
 import { generateMetadata } from './steps/metadata.mjs';
-import { uploadVideo } from './services/youtube.mjs';
+import { uploadVideo, setPrivacyStatus } from './services/youtube.mjs';
 import { getActiveChannel } from './services/channels.mjs';
+import { sendDiscord, COLORS } from './services/notify.mjs';
 
 const MOODS = ['romantique et doux', 'romantique nostalgique', 'romantique piano', 'romantique nuit', 'romantique acoustique'];
 
@@ -112,17 +113,34 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
       await logStep('upload', 'skip', 'dry-run');
     }
 
-    await setStatus('pending_review', {
+    // Mode de publication : "auto" -> passe la vidéo en public ; sinon -> brouillon à valider.
+    let finalStatus = 'pending_review';
+    if (!dryRun && youtubeId && channel?.publish_mode === 'auto') {
+      try { await setPrivacyStatus(youtubeId, 'public'); finalStatus = 'published'; await logStep('publish', 'ok', 'public (auto)'); }
+      catch (e) { await logStep('publish', 'warn', e.message); }
+    }
+
+    await setStatus(finalStatus, {
       title: meta.title, description: meta.description, tags: meta.tags,
       duration_sec: durSec, utm_url: utmUrl, theme: curation.understanding || mood,
       youtube_video_id: youtubeId, youtube_url: youtubeUrl,
-      background_asset: bgAsset?.id || null, banner_asset: bannerAsset?.id || null
+      background_asset: backgroundAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null
     });
     await logStep('done', 'ok');
-    return { videoId: vid, youtubeId, title: meta.title };
+
+    if (channel?.discord_webhook) {
+      const published = finalStatus === 'published';
+      sendDiscord(channel.discord_webhook, {
+        title: published ? '✅ Vidéo publiée' : '📝 Nouveau brouillon à valider',
+        description: `**${meta.title}**\n${youtubeUrl || '(dry-run)'}`,
+        color: COLORS.ok, url: youtubeUrl || undefined
+      }).catch(() => {});
+    }
+    return { videoId: vid, youtubeId, title: meta.title, status: finalStatus };
   } catch (e) {
     await setStatus('failed', { error: String(e.message || e) }).catch(() => {});
     await logStep('error', 'fail', String(e.message || e));
+    if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '❌ Échec de génération vidéo', description: String(e.message || e).slice(0, 800), color: COLORS.error }).catch(() => {});
     throw e;
   } finally {
     try { rmSync(workDir, { recursive: true, force: true }); } catch {}
