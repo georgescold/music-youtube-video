@@ -87,6 +87,8 @@
   .ref-actions button:hover { border-color: var(--color-ink); color: var(--color-ink); }
   .empty { color: var(--color-mut); font-size: 13px; padding: 16px 0; }
 </style>
+<link rel="stylesheet" href="/theme.css">
+<script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 </head>
 <body>
 <div class="topbar">
@@ -99,6 +101,7 @@
         <a href="/references" class="active">Chansons de référence</a>
         <a href="/settings">Paramètres</a>
       </nav>
+      <button class="btn-ghost theme-toggle" type="button" aria-label="Thème">🌙</button>
       <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
     </div>
   </div>
@@ -197,5 +200,6 @@ async function load() {
 }
 load();
 </script>
+<script src="/theme.js"></script>
 </body>
 </html>

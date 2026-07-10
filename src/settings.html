@@ -51,6 +51,8 @@
   .savebar { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--color-paper) 40%); padding: 16px 0 4px; display: flex; align-items: center; gap: 12px; }
   #savemsg { font-size: 12.5px; color: var(--color-mut); }
 </style>
+<link rel="stylesheet" href="/theme.css">
+<script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 </head>
 <body>
 <div class="topbar">
@@ -60,6 +62,7 @@
       <nav class="nav">
         <a href="/videos">Vidéos</a><a href="/">Assets</a><a href="/references">Chansons de référence</a><a href="/settings" class="active">Paramètres</a>
       </nav>
+      <button class="btn-ghost theme-toggle" type="button" aria-label="Thème">🌙</button>
       <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
     </div>
   </div>
@@ -275,5 +278,6 @@ $('chan-refresh').onclick = async () => {
 };
 (async () => { await loadChannels(); await loadSettings(); })();
 </script>
+<script src="/theme.js"></script>
 </body>
 </html>

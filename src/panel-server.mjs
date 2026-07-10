@@ -148,7 +148,12 @@ button{width:100%;margin-top:20px;padding:10px;background:var(--color-ink);color
 button:disabled{opacity:.5}
 .msg{margin-top:12px;font-size:12.5px;min-height:16px}
 .err{color:var(--danger)}.ok{color:var(--success)}
-</style></head><body>
+.theme-toggle{position:fixed;top:16px;right:16px;background:var(--color-paper);color:var(--color-ink);border:1px solid var(--color-rule2);border-radius:100px;padding:6px 11px;font-size:14px;line-height:1;cursor:pointer;width:auto;margin:0}
+</style>
+<link rel="stylesheet" href="/theme.css">
+<script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+</head><body>
+<button class="theme-toggle" type="button" aria-label="Thème">🌙</button>
 <div class="card">
   <img src="/logo.png" alt="" style="height:24px;display:block;margin-bottom:16px">
   <h1>${signup ? 'Crée ton compte' : 'The Playlist Youtube'}</h1>
@@ -170,7 +175,9 @@ f.onsubmit=async e=>{e.preventDefault();btn.disabled=true;msg.className='msg';ms
   else{msg.className='msg err';msg.textContent=d.error||'Erreur';btn.disabled=false;}
  }catch(err){msg.className='msg err';msg.textContent='Erreur réseau';btn.disabled=false;}
 };
-</script></body></html>`;
+</script>
+<script src="/theme.js"></script>
+</body></html>`;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -179,6 +186,12 @@ const server = http.createServer(async (req, res) => {
     const path = url.pathname;
     const q = url.searchParams;
 
+    if (req.method === 'GET' && path === '/theme.css') {
+      return readFile(join(__dirname, 'theme.css')).then(b => send(res, 200, 'text/css; charset=utf-8', b)).catch(() => send(res, 404, 'text/plain', ''));
+    }
+    if (req.method === 'GET' && path === '/theme.js') {
+      return readFile(join(__dirname, 'theme.js')).then(b => send(res, 200, 'text/javascript; charset=utf-8', b)).catch(() => send(res, 404, 'text/plain', ''));
+    }
     if (req.method === 'GET' && path === '/logo.png') {
       return readFile(join(__dirname, 'logo.png')).then(b => send(res, 200, 'image/png', b)).catch(() => send(res, 404, 'text/plain', ''));
     }

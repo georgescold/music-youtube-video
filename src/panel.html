@@ -94,8 +94,10 @@
   .nav a { color: var(--color-mut); font-size: 13px; font-weight: 600; text-decoration: none; padding: 6px 12px; border-radius: 100px; }
   .nav a:hover { color: var(--color-ink); background: var(--color-soft); }
   .nav a.active { color: var(--color-ink); background: var(--color-soft2); }
-  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
 </style>
+<link rel="stylesheet" href="/theme.css">
+<script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 </head>
 <body>
 <div class="topbar">
@@ -108,6 +110,7 @@
         <a href="/references">Chansons de référence</a>
         <a href="/settings">Paramètres</a>
       </nav>
+      <button class="btn-ghost theme-toggle" type="button" aria-label="Thème">🌙</button>
       <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
     </div>
   </div>
@@ -303,5 +306,6 @@ document.getElementById('pos-save').onclick = async () => { if (!posAd) return; 
 
 load();
 </script>
+<script src="/theme.js"></script>
 </body>
 </html>
