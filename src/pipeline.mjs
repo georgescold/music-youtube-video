@@ -90,7 +90,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
         if (va?.emotion) {
           emotion = {
             name: String(va.emotion).trim(),
-            description: [va.scene, va.style].filter(Boolean).join(' · '),
+            description: String(va.situation || '').trim(), // situation émotionnelle ressentie (jamais la scène visuelle)
             keywords: Array.isArray(va.mots_cles_musique) ? va.mots_cles_musique : []
           };
           await logStep('vision', 'ok', 'émotion de l\'image : ' + emotion.name);

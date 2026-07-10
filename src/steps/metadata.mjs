@@ -2,13 +2,14 @@
 // sont assembles en code (timestamps exacts, lien UTM controle) ; Claude fournit le creatif.
 import { askClaude, extractJson } from '../services/claude.mjs';
 
+// Exemples de TON (émotion brute, 1re personne, déclencheur) — jamais à recopier.
 const TITLE_SEEDS = [
-  "POV : tu ne croyais plus en l'amour jusqu'à ce soir",
-  "Il est 3h du matin et tu y repenses encore",
-  "Cette playlist te redonnera foi en l'amour",
-  "Les chansons qu'on écoute quand on pense à quelqu'un",
-  "Une playlist secrète pour échapper à la réalité",
-  "Écoute ça quand tout va bien et que tu es amoureux"
+  "si tu me voyais pleurer dans ma chambre",
+  "nous nous retrouverons un jour…",
+  "nos chemins se séparent mais je sais qu'on se retrouvera",
+  "je t'aime encore, même si je ne devrais plus",
+  "il est 3h du matin et tu me manques toujours",
+  "personne ne saura à quel point je t'ai aimé"
 ];
 
 // Retire la balise [Playlist] d'un titre (pour les liens internes lisibles).
@@ -51,8 +52,15 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     plan.primary_keywords?.length ? 'Mots-clés PRINCIPaux du plan SEO (à privilégier) : ' + plan.primary_keywords.join(', ') : '',
     plan.pillars?.length ? 'Piliers de contenu de la chaîne : ' + plan.pillars.join(' · ') : '',
     "Le HOOK (1re phrase de la description) doit contenir le mot-clé principal DÈS LES 40 PREMIERS CARACTÈRES (avant la troncature mobile).",
-    "Format de titre performant : titre émotionnel à la 2e personne (« POV : ... » ou scénario intime), avec la balise [Playlist]. Le plus deep et émotionnel possible, TOUJOURS différent des titres déjà publiés.",
-    emotion ? `ÉMOTION IMPOSÉE de cette vidéo : « ${emotion.name} » (${emotion.description}). Le titre DOIT capturer PRÉCISÉMENT cette émotion, pas une autre.` : '',
+    "",
+    "RÈGLES DU TITRE (le plus important) :",
+    "- Le titre NE DÉCRIT JAMAIS l'image ni une scène (interdit : « il t'embrasse dans le champ », « un couple sous la pluie »).",
+    "- Il EXPRIME et DÉCUPLE l'émotion que ressent LE SPECTATEUR, comme un miroir de son propre vécu.",
+    "- C'est un DÉCLENCHEUR (trigger) : il fait réagir à coup sûr et donne envie de cliquer parce qu'il reflète PARFAITEMENT ce que la personne ressent à cet instant.",
+    "- Voix intime, souvent à la 1re personne, brute et sincère, profonde. Comme une confidence ou une parole de chanson.",
+    "- Exemples du TON visé (ne pas recopier) : « si tu me voyais pleurer dans ma chambre », « nous nous retrouverons un jour… », « nos chemins se séparent mais je sais qu'on se retrouvera », « je t'aime encore même si je ne devrais plus ».",
+    "- Inclure la balise [Playlist]. Toujours différent des titres déjà publiés.",
+    emotion ? `ÉMOTION À DÉCUPLER dans le titre : « ${emotion.name} »${emotion.description ? ' — ' + emotion.description : ''}. Écris CE que ressent le spectateur qui vit cette émotion (pas ce qu'on voit).` : '',
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."
   ].filter(Boolean).join('\n');
 
@@ -67,7 +75,7 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     [...avoidTitles, ...extraAvoid].slice(-40).map(s => '- ' + s).join('\n'),
     '',
     'Génère (dans la langue de la chaîne) :',
-    '- "title" : un titre YouTube accrocheur (60-70 caractères max), incluant [Playlist].',
+    '- "title" : le titre-déclencheur (60-70 caractères max), incluant [Playlist]. Il DÉCUPLE l\'émotion du spectateur, ne décrit JAMAIS l\'image.',
     '- "hook" : 2-3 phrases d\'accroche pour le début de la description, cohérentes avec le positionnement de la chaîne.',
     '- "keywords" : 12 à 18 mots-clés SEO adaptés au domaine (chaînes courtes).',
     '- "hashtags" : 8 hashtags pertinents pour ce domaine (sans le #, juste le mot).',

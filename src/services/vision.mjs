@@ -31,6 +31,6 @@ export function analyzeImage(imgPath, { token, model = 'sonnet' } = {}) {
       try { resolve(extractJson(out)); } catch (e) { reject(e); }
     });
     child.stdin.on('error', () => {});
-    child.stdin.end(`Lis l'image située ici : ${imgPath}\nAnalyse-la et réponds UNIQUEMENT en JSON valide :\n{"style":"...","scene":"...","emotion":"...","couleurs":"...","mots_cles_musique":["...","..."]}\nEn français, précis. "mots_cles_musique" = 4 à 6 termes d'ambiance musicale EN ANGLAIS qui incarnent l'émotion de l'image (pour orienter une recherche de musique).`);
+    child.stdin.end(`Lis l'image située ici : ${imgPath}\nNe DÉCRIS PAS la scène. Ressens-la : quelle ÉMOTION humaine profonde, quel moment de vie intime évoque-t-elle chez quelqu'un qui la regarde ?\nRéponds UNIQUEMENT en JSON valide :\n{"emotion":"...","situation":"...","mots_cles_musique":["...","..."]}\n- "emotion" : en français, l'émotion/le sentiment profond ressenti (ex : « le manque après une rupture », « l'espoir de se retrouver un jour », « la tendresse des débuts »). PAS une description visuelle.\n- "situation" : en français, en 1 phrase, le moment de vie / la situation émotionnelle que ça évoque pour le spectateur.\n- "mots_cles_musique" : 4 à 6 termes d'ambiance musicale EN ANGLAIS qui incarnent cette émotion (pour orienter une recherche de musique).`);
   });
 }
