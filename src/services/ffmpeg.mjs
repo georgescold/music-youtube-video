@@ -3,10 +3,16 @@
 //  - PUBS (ads) : image/animation/vidéo superposées à des moments précis (intro, outro + fréquence réglable).
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const FF = process.env.FFMPEG_BIN || 'ffmpeg';
 const FP = process.env.FFPROBE_BIN || 'ffprobe';
 const fwd = p => String(p).replace(/\\/g, '/');
+// Échappe un chemin pour l'intérieur d'un filtre FFmpeg (slashes + deux-points de lecteur Windows).
+const escFilter = p => fwd(p).replace(/:/g, '\\:');
+const __dirname = dirname(fileURLToPath(import.meta.url)); // src/services
+const FONT_PATH = join(__dirname, '..', 'assets', 'fonts', 'PlayfairDisplay.ttf');
 
 export function probeDuration(path) {
   const out = execFileSync(FP, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]).toString().trim();
@@ -29,6 +35,42 @@ export function buildTracklist(tracks) {
     t += probeDuration(tr.path);
   }
   return lines;
+}
+
+// Retire la balise [Playlist] du titre pour le texte de la miniature (comme les chaînes de référence).
+export function stripPlaylistTag(title) {
+  return String(title || '').replace(/\[\s*playlist\s*\]/ig, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+// Découpe le texte en lignes d'au plus `maxChars` caractères (mots entiers).
+function wrapLines(text, maxChars) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = []; let cur = '';
+  for (const w of words) {
+    if (!cur) cur = w;
+    else if ((cur + ' ' + w).length <= maxChars) cur += ' ' + w;
+    else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// Génère une miniature 1280x720 : image de fond fournie + titre centré (police embarquée).
+export function renderThumbnail({ imagePath, title, outPath, workDir, fontPath = FONT_PATH, overlay = 0.22, log = () => {} }) {
+  const text = stripPlaylistTag(title) || 'Playlist';
+  const lines = wrapLines(text, 22);
+  const txtFile = join(workDir, 'thumb-text.txt');
+  writeFileSync(txtFile, lines.join('\n'), 'utf8');
+  const fontsize = lines.length >= 3 ? 50 : (lines.length === 2 ? 60 : 66);
+  const vf = [
+    'scale=1280:720:force_original_aspect_ratio=increase',
+    'crop=1280:720',
+    `drawbox=x=0:y=0:w=1280:h=720:color=black@${overlay}:t=fill`,
+    `drawtext=fontfile='${escFilter(fontPath)}':textfile='${escFilter(txtFile)}':fontcolor=white:fontsize=${fontsize}:line_spacing=14:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black@0.65:shadowx=2:shadowy=2`
+  ].join(',');
+  execFileSync(FF, ['-y', '-i', imagePath, '-vf', vf, '-frames:v', '1', '-q:v', '3', outPath], { stdio: 'ignore' });
+  log(`miniature générée (${lines.length} ligne(s))`);
+  return outPath;
 }
 
 export function generateDefaultBackground(outPath, width = 1920, height = 1080) {

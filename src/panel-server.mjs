@@ -421,6 +421,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.discord_webhook === 'string' && b.discord_webhook.trim()) { const w = b.discord_webhook.trim(); if (isDiscordWebhook(w)) patch.discord_webhook = w; else return json(res, { ok: false, error: 'Webhook Discord invalide (https://discord.com/api/webhooks/…)' }); }
       if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
+      if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
       if (b.background_mode === 'single' || b.background_mode === 'slideshow') patch.background_mode = b.background_mode;
       if (b.slideshow_count != null) patch.slideshow_count = Math.max(0, Math.min(100, Number(b.slideshow_count) || 0));
       if (b.reuse_gap != null) patch.reuse_gap = Math.max(0, Math.min(365, Number(b.reuse_gap) || 0));

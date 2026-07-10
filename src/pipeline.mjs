@@ -6,10 +6,10 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dbSelect, dbInsert, dbPatch, storageSign } from './services/supabase.mjs';
 import { curatePlaylist, durationSec } from './steps/curate.mjs';
 import { downloadAll } from './steps/download.mjs';
-import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground } from './services/ffmpeg.mjs';
+import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground, renderThumbnail } from './services/ffmpeg.mjs';
 import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
-import { uploadVideo, setPrivacyStatus } from './services/youtube.mjs';
+import { uploadVideo, setPrivacyStatus, setThumbnail } from './services/youtube.mjs';
 import { getActiveChannel } from './services/channels.mjs';
 import { sendDiscord, COLORS } from './services/notify.mjs';
 
@@ -145,6 +145,19 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
       await logStep('upload', 'skip', 'dry-run');
     }
 
+    // 6b. Miniature : image de fond de la vidéo + titre en texte (police embarquée). Activable par chaîne.
+    let thumbnailUrl = null;
+    const thumbImagePath = backgrounds.find(b => !b.isVideo)?.path || null;
+    if (!dryRun && youtubeId && channel?.thumbnail_enabled !== false && thumbImagePath) {
+      try {
+        const thumbPath = join(workDir, 'thumbnail.jpg');
+        renderThumbnail({ imagePath: thumbImagePath, title: meta.title, outPath: thumbPath, workDir, log });
+        await setThumbnail(youtubeId, thumbPath);
+        thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
+        await logStep('thumbnail', 'ok');
+      } catch (e) { await logStep('thumbnail', 'warn', e.message); }
+    }
+
     // Mode de publication : "auto" -> passe la vidéo en public ; sinon -> brouillon à valider.
     let finalStatus = 'pending_review';
     if (!dryRun && youtubeId && channel?.publish_mode === 'auto') {
@@ -155,7 +168,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     await setStatus(finalStatus, {
       title: meta.title, description: meta.description, tags: meta.tags,
       duration_sec: durSec, utm_url: utmUrl, theme: curation.understanding || mood,
-      youtube_video_id: youtubeId, youtube_url: youtubeUrl,
+      youtube_video_id: youtubeId, youtube_url: youtubeUrl, thumbnail_url: thumbnailUrl,
       background_asset: chosenBgAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null,
       background_asset_ids: chosenBgAssets.map(a => a.id)
     });
