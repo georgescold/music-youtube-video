@@ -44,7 +44,7 @@ let genTimer = null;
 let coachTimer = null;
 let genController = null;
 
-function generateOnce({ dryRun = false } = {}) {
+function generateOnce({ dryRun = false, targetSec = null } = {}) {
   if (genState.running) return false;
   const controller = { cancelled: false, child: null };
   genController = controller;
@@ -54,8 +54,8 @@ function generateOnce({ dryRun = false } = {}) {
     genState.phase = line.m; genState.log.push(line);
     if (genState.log.length > 600) genState.log.shift();
   };
-  pushLog('démarrage de la génération…');
-  runPipeline({ dryRun, controller, log: pushLog })
+  pushLog('démarrage de la génération…' + (targetSec ? ` (durée visée ${Math.round(targetSec / 60)} min)` : ''));
+  runPipeline({ dryRun, targetSec, controller, log: pushLog })
     .then(r => { Object.assign(genState, { running: false, lastResult: r, videoId: r.videoId, phase: 'terminé' }); pushLog('✅ terminé — vidéo prête'); })
     .catch(e => {
       const cancelled = controller.cancelled || /cancel/i.test(String(e.message || e));
@@ -415,7 +415,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/api/videos/generate') {
       const refs = await dbSelect('reference_songs', '?active=eq.true&limit=1').catch(() => []);
       if (!refs.length) return json(res, { ok: false, error: 'Ajoute au moins une chanson de référence active avant de générer.' });
-      const started = generateOnce({ dryRun: false });
+      // Durée en fourchette (minutes) fournie à la génération manuelle -> tirage aléatoire ; sinon fourchette de la chaîne.
+      const b = await readJsonBody(req).catch(() => ({}));
+      let targetSec = null;
+      const mn = Number(b?.minMin), mx = Number(b?.maxMin);
+      if (mn >= 1 && mx >= 1) {
+        const lo = Math.max(5, Math.min(mn, mx)), hi = Math.min(600, Math.max(mn, mx));
+        targetSec = (lo + Math.floor(Math.random() * (hi - lo + 1))) * 60;
+      }
+      const started = generateOnce({ dryRun: false, targetSec });
       return json(res, { ok: true, started });
     }
     if (req.method === 'POST' && path === '/api/videos/generate/cancel') {

@@ -1,27 +1,19 @@
 // Dérive une palette d'émotions EXHAUSTIVE à partir des exemples de la chaîne :
 // chaînes modèles (titres récents) + chansons de référence. Chaque émotion porte sa description
 // et des mots-clés musicaux (EN) qui serviront à la curation.
-import { resolveChannel, getRecentVideos } from '../services/youtubeData.mjs';
+import { collectReferenceVideos } from '../services/youtubeData.mjs';
 import { askClaude, extractJson } from '../services/claude.mjs';
 
 export async function deriveEmotions({ inspirationUrls = [], references = [], token, log = () => {} } = {}) {
-  // 1) Titres des chaînes modèles.
-  const channelBlocks = [];
-  for (const u of inspirationUrls) {
-    try {
-      const ch = await resolveChannel(u);
-      if (!ch?.id) continue;
-      const vids = await getRecentVideos(ch.id, 15);
-      if (vids.length) channelBlocks.push(`Chaîne « ${ch.title} » :\n` + vids.map(v => '- ' + v.title).join('\n'));
-      log(`modèle : ${ch.title} — ${vids.length} titres`);
-    } catch (e) { log('modèle ignoré : ' + e.message); }
-  }
+  // 1) Titres des vidéos de référence (URLs de vidéos et/ou de chaînes).
+  const vids = await collectReferenceVideos(inspirationUrls, 15, log);
+  const videoBlock = vids.length ? 'Titres des vidéos de référence :\n' + vids.map(v => '- ' + v.title).join('\n') : '';
   // 2) Chansons de référence.
   const refBlock = references.length
     ? 'Chansons de référence :\n' + references.map(r => `- ${r.title || '?'}${r.artist ? ' — ' + r.artist : ''}${(r.mood_tags || []).length ? ' [' + r.mood_tags.join(', ') + ']' : ''}`).join('\n')
     : '';
 
-  if (!channelBlocks.length && !refBlock) return { ok: false, error: 'aucun exemple exploitable (ajoute des chaînes d\'inspiration et/ou des chansons de référence)', emotions: [] };
+  if (!videoBlock && !refBlock) return { ok: false, error: 'aucun exemple exploitable (ajoute des vidéos de référence et/ou des chansons de référence)', emotions: [] };
 
   const system = [
     "Tu es analyste émotionnel spécialisé dans la musique d'amour et les playlists YouTube.",
@@ -32,7 +24,7 @@ export async function deriveEmotions({ inspirationUrls = [], references = [], to
   ].join('\n');
   const user = [
     'EXEMPLES :', '',
-    channelBlocks.join('\n\n'), '', refBlock, '',
+    videoBlock, '', refBlock, '',
     'Dresse la liste EXHAUSTIVE des émotions distinctes que ces exemples incarnent ou visent.',
     'Pour CHAQUE émotion :',
     '- "name" : nom court et évocateur en français (ex : « le manque à 3h du matin », « euphorie des débuts »).',

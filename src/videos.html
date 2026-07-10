@@ -100,7 +100,14 @@
       <h1>Vidéos</h1>
       <p class="page-sub">Les vidéos générées atterrissent ici en brouillon privé. Relis, puis publie.</p>
     </div>
-    <button class="btn-primary" id="gen">Générer une vidéo</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;color:var(--color-mut);font-weight:600">Durée</span>
+      <input id="dmin" type="number" min="5" max="600" title="Durée min (minutes)" style="width:54px;padding:8px 8px;background:var(--color-paper);border:1px solid var(--color-rule2);border-radius:8px;font-size:13px;color:var(--color-ink);font-family:var(--font-sans);text-align:center">
+      <span style="color:var(--color-mut2)">–</span>
+      <input id="dmax" type="number" min="5" max="600" title="Durée max (minutes)" style="width:54px;padding:8px 8px;background:var(--color-paper);border:1px solid var(--color-rule2);border-radius:8px;font-size:13px;color:var(--color-ink);font-family:var(--font-sans);text-align:center">
+      <span style="font-size:12px;color:var(--color-mut)">min</span>
+      <button class="btn-primary" id="gen">Générer une vidéo</button>
+    </div>
   </div>
   <div class="genbar-row" style="display:flex;align-items:center;gap:14px;margin:-8px 0 24px;min-height:1.3em">
     <div class="genbar" id="genbar" style="margin:0"></div>
@@ -127,9 +134,19 @@ function fmtDur(sec) { if (!sec) return ''; const m = Math.floor(sec / 60), s = 
 const cancelBtn = document.getElementById('cancel');
 let polling = false;
 
+// Pré-remplit la fourchette de durée depuis la config de la chaîne (modifiable pour cette génération).
+(async () => {
+  try {
+    const s = await (await fetch('/api/settings')).json();
+    document.getElementById('dmin').value = Math.round((s.settings?.target_min_sec || 5400) / 60);
+    document.getElementById('dmax').value = Math.round((s.settings?.target_max_sec || 5400) / 60);
+  } catch (e) {}
+})();
+
 genBtn.onclick = async () => {
   genBtn.disabled = true;
-  const d = await (await fetch('/api/videos/generate', { method: 'POST' })).json();
+  const body = { minMin: Number(document.getElementById('dmin').value), maxMin: Number(document.getElementById('dmax').value) };
+  const d = await (await fetch('/api/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
   if (!d.ok) { genbar.className = 'genbar err'; genbar.textContent = d.error; genBtn.disabled = false; return; }
   startPolling();
 };

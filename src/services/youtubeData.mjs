@@ -10,6 +10,53 @@ async function api(path) {
   return d;
 }
 
+// Extrait un ID de vidéo depuis une URL (youtu.be, watch?v=, shorts, embed).
+export function parseVideoId(input) {
+  const s = String(input || '').trim();
+  let m;
+  if ((m = s.match(/youtu\.be\/([\w-]{11})/))) return m[1];
+  if ((m = s.match(/[?&]v=([\w-]{11})/))) return m[1];
+  if ((m = s.match(/youtube\.com\/(?:shorts|embed|live)\/([\w-]{11})/))) return m[1];
+  return null;
+}
+
+// Détails de vidéos par ID (titre, miniature, vues). Par lots de 50.
+export async function getVideosById(ids = []) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50).join(',');
+    const d = await api(`videos?part=snippet,statistics&id=${batch}`);
+    for (const v of (d.items || [])) {
+      out.push({
+        videoId: v.id, title: v.snippet?.title, channelTitle: v.snippet?.channelTitle,
+        publishedAt: v.snippet?.publishedAt, views: Number(v.statistics?.viewCount || 0),
+        thumbnail: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url || null
+      });
+    }
+  }
+  return out;
+}
+
+// Rassemble les vidéos de référence à partir d'un mélange d'URLs de VIDÉOS et/ou de CHAÎNES.
+// Une URL de vidéo -> cette vidéo précise ; une chaîne/@handle -> ses vidéos récentes.
+export async function collectReferenceVideos(urls = [], perChannel = 15, log = () => {}) {
+  const out = [];
+  const videoIds = [];
+  for (const u of urls) {
+    const vid = parseVideoId(u);
+    if (vid) { videoIds.push(vid); continue; }
+    try {
+      const ch = await resolveChannel(u);
+      if (ch?.id) { const vids = await getRecentVideos(ch.id, perChannel); out.push(...vids); log(`chaîne ${ch.title} — ${vids.length} vidéos`); }
+    } catch (e) { log('réf ignorée : ' + e.message); }
+  }
+  if (videoIds.length) {
+    try { const vids = await getVideosById(videoIds); out.push(...vids); log(`${vids.length} vidéo(s) de référence`); }
+    catch (e) { log('vidéos réf KO : ' + e.message); }
+  }
+  return out;
+}
+
 // Extrait un handle (@nom), un ID de chaîne (UC...) ou un nom depuis une URL/texte libre.
 export function parseChannelRef(input) {
   const s = String(input || '').trim();

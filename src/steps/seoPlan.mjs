@@ -3,21 +3,14 @@
 // Nourri par le contexte de la chaîne + les titres réels des chaînes modèles.
 // (La recherche web live n'est pas exécutée côté serveur ; on s'appuie sur la connaissance SEO de Claude
 //  + les données réelles de la niche via les chaînes modèles.)
-import { resolveChannel, getRecentVideos } from '../services/youtubeData.mjs';
+import { collectReferenceVideos } from '../services/youtubeData.mjs';
 import { askClaude, extractJson } from '../services/claude.mjs';
 
 export async function generateSeoPlan({ objective = '', productDesc = '', inspirationUrls = [], references = [], token, log = () => {} } = {}) {
-  const modelTitles = [];
-  for (const u of inspirationUrls) {
-    try {
-      const ch = await resolveChannel(u);
-      if (!ch?.id) continue;
-      const vids = await getRecentVideos(ch.id, 15);
-      const top = [...vids].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 12);
-      if (top.length) modelTitles.push(`« ${ch.title} » : ` + top.map(v => v.title).join(' | '));
-      log(`modèle : ${ch.title} — ${top.length} titres`);
-    } catch (e) { log('modèle ignoré : ' + e.message); }
-  }
+  // Vidéos de référence (URLs de vidéos et/ou de chaînes), triées par vues.
+  const vids = await collectReferenceVideos(inspirationUrls, 15, log);
+  const top = [...vids].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 30);
+  const modelTitles = top.length ? ['Titres de vidéos de référence (ce qui marche dans la niche) : ' + top.map(v => v.title).join(' | ')] : [];
   const refBlock = references.length ? 'Chansons de référence : ' + references.map(r => r.title).filter(Boolean).join(', ') : '';
 
   const system = [
