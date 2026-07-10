@@ -17,12 +17,13 @@ function normTitle(t) {
     .replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, log = () => {} }) {
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, log = () => {} }) {
   const pb = strategy.playbook || {};
   const system = [
     "Tu es un expert du SEO YouTube pour les chaînes de playlists de musique d'amour francophones.",
     "Le format qui marche : un TITRE émotionnel à la 2e personne (style « POV : ... » ou scénario intime), en français, avec la balise [Playlist].",
     "Le titre doit être le plus deep et émotionnel possible, et TOUJOURS différent des titres déjà publiés.",
+    emotion ? `ÉMOTION IMPOSÉE de cette vidéo : « ${emotion.name} » (${emotion.description}). Le titre DOIT capturer PRÉCISÉMENT cette émotion, pas une autre.` : '',
     strategy.objective ? `Objectif de la chaîne : ${strategy.objective}` : '',
     strategy.product_desc ? `Produit à mettre en valeur (pour orienter le champ lexical, sans le citer dans le titre) : ${strategy.product_desc}` : '',
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."

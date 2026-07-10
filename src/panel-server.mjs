@@ -13,6 +13,7 @@ import { testYouTube, testEpidemic, testClaude } from './services/connectionTest
 import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView } from './services/channels.mjs';
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
+import { deriveEmotions } from './steps/emotions.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -455,6 +456,18 @@ const server = http.createServer(async (req, res) => {
       if (!r.ok) return json(res, { ok: false, error: r.error });
       const updated = await updateChannel(ch.id, { playbook: r.playbook, playbook_updated_at: new Date().toISOString() });
       return json(res, { ok: true, playbook: r.playbook, errors: r.errors || [], channel: channelPublicView(updated) });
+    }
+    // Dérive la palette d'émotions depuis les chaînes modèles + les chansons de référence.
+    if (req.method === 'POST' && path === '/api/settings/derive-emotions') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { ok: false, error: 'aucune chaîne active' });
+      const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
+      const refs = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title,artist,mood_tags`).catch(() => []);
+      const token = channelCreds(ch).claudeToken;
+      const r = await deriveEmotions({ inspirationUrls: urls, references: refs, token, log: m => console.log('[emotions]', m) });
+      if (!r.ok) return json(res, { ok: false, error: r.error });
+      const updated = await updateChannel(ch.id, { emotion_palette: r.emotions, emotion_cursor: 0, emotion_palette_updated_at: new Date().toISOString() });
+      return json(res, { ok: true, emotions: r.emotions, channel: channelPublicView(updated) });
     }
     // Rafraîchit le nom (et l'ID) de la chaîne depuis YouTube.
     if (req.method === 'POST' && path === '/api/settings/refresh-name') {

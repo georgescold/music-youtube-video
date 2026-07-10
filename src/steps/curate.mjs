@@ -66,9 +66,12 @@ function shuffle(arr) {
 }
 
 // vocalsOverride: 'instrumental' | 'vocal' | 'mixed' | undefined (undefined = Claude décide, adaptatif)
-export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, log = () => {} }) {
-  const analysis = await analyzeReferences(references, moodHint);
+export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, emotion, log = () => {} }) {
+  // Si une émotion pilote la vidéo, elle devient le contexte prioritaire de la curation.
+  const hint = emotion ? `${emotion.name} — ${emotion.description}` : moodHint;
+  const analysis = await analyzeReferences(references, hint);
   const vocalsMode = vocalsOverride || analysis.vocals;
+  if (emotion) log('émotion : ' + emotion.name);
   if (analysis.understanding) log('compris : ' + analysis.understanding);
   log('mode voix : ' + vocalsMode);
 
@@ -77,8 +80,11 @@ export async function curatePlaylist({ references = [], targetSec = 5400, vocals
   else if (vocalsMode === 'vocal') filter.vocals = true;
   // "mixed" : pas de filtre vocals -> Epidemic renvoie les deux.
 
-  let angles = analysis.angles;
-  if (angles.length < 6) angles = [...new Set([...angles, ...DEFAULT_ANGLES])].slice(0, 12);
+  // Les mots-clés de l'émotion passent en tête des angles -> la musique incarne l'émotion visée.
+  let angles = emotion?.keywords?.length ? [...emotion.keywords, ...analysis.angles] : analysis.angles;
+  angles = [...new Set(angles)];
+  if (angles.length < 6) angles = [...new Set([...angles, ...DEFAULT_ANGLES])];
+  angles = angles.slice(0, 14);
   log('angles : ' + angles.join(' · '));
 
   const pool = new Map();

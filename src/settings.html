@@ -104,6 +104,16 @@
     <div id="playbook-view" style="font-size:12.5px;color:var(--color-mut);white-space:pre-wrap;margin-top:6px"></div>
   </div>
 
+  <h2>Palette d'émotions</h2>
+  <div class="card">
+    <p class="hint" style="margin:-2px 0 14px">Dérivée de tes <b>chaînes d'inspiration</b> + tes <b>chansons de référence</b>. Chaque vidéo est ancrée sur <b>une</b> émotion (rotation sans répétition) : titre, musiques et miniature centrés dessus.</p>
+    <div class="card-head">
+      <div><div class="card-title" style="font-size:13px">Émotions</div><div class="card-desc" id="emotions-meta">Aucune palette. Ajoute des inspirations/références, enregistre, puis dérive.</div></div>
+      <button class="btn btn-sec" id="derive-emotions-btn" type="button">Dériver</button>
+    </div>
+    <div id="emotions-view" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+  </div>
+
   <h2>YouTube</h2>
   <div class="card">
     <div class="card-head"><span class="card-title">Compte YouTube (upload)</span><button class="btn btn-sec" data-test="youtube">Tester</button></div>
@@ -272,6 +282,7 @@ async function loadSettings() {
   $('f-affiliate_label').value = st.affiliate_label || '';
   $('f-inspiration_urls').value = (st.inspiration_urls || []).join('\n');
   renderPlaybook(st.playbook, st.playbook_updated_at);
+  renderEmotions(s.emotions);
   $('f-cron_enabled').checked = !!s.cron_enabled;
   $('f-thumbnail_enabled').checked = s.thumbnail_enabled !== false;
   $('f-thumbnail_text').checked = s.thumbnail_text !== false;
@@ -341,6 +352,34 @@ function renderPlaybook(pb, updatedAt) {
     section('À faire', pb.do) +
     section('À éviter', pb.dont);
 }
+
+function renderEmotions(em) {
+  const meta = $('emotions-meta'), view = $('emotions-view');
+  const palette = (em && em.palette) || [];
+  view.innerHTML = '';
+  if (!palette.length) { meta.textContent = 'Aucune palette. Ajoute des inspirations/références, enregistre, puis dérive.'; return; }
+  const cursor = (em.cursor || 0) % palette.length;
+  meta.textContent = palette.length + ' émotions · prochaine vidéo : « ' + palette[cursor].name + ' »' + (em.updated_at ? ' · dérivée le ' + new Date(em.updated_at).toLocaleDateString('fr-FR') : '');
+  palette.forEach((e, i) => {
+    const chip = document.createElement('span');
+    const isNext = i === cursor;
+    chip.title = e.description + (e.keywords && e.keywords.length ? '\nMusique : ' + e.keywords.join(', ') : '');
+    chip.textContent = (isNext ? '▶ ' : '') + e.name;
+    chip.style.cssText = 'font-size:12px;padding:5px 11px;border-radius:100px;border:1px solid ' + (isNext ? 'var(--color-ink)' : 'var(--color-rule2)') + ';color:' + (isNext ? 'var(--color-ink)' : 'var(--color-mut)') + ';background:' + (isNext ? 'var(--color-soft2)' : 'transparent') + ';cursor:default';
+    view.appendChild(chip);
+  });
+}
+
+$('derive-emotions-btn').onclick = async () => {
+  const btn = $('derive-emotions-btn'), meta = $('emotions-meta');
+  btn.disabled = true; meta.textContent = 'Dérivation en cours (analyse des exemples + synthèse Claude)…';
+  try {
+    const d = await (await fetch('/api/settings/derive-emotions', { method: 'POST' })).json();
+    if (d.ok) renderEmotions({ palette: d.emotions, cursor: 0, updated_at: new Date().toISOString() });
+    else meta.textContent = 'Échec : ' + (d.error || 'inconnu');
+  } catch (e) { meta.textContent = 'Erreur réseau'; }
+  btn.disabled = false;
+};
 
 $('analyze-btn').onclick = async () => {
   const btn = $('analyze-btn'), meta = $('playbook-meta');

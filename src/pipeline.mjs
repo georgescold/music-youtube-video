@@ -10,7 +10,7 @@ import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaul
 import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus, setThumbnail } from './services/youtube.mjs';
-import { getActiveChannel } from './services/channels.mjs';
+import { getActiveChannel, updateChannel } from './services/channels.mjs';
 import { sendDiscord, COLORS } from './services/notify.mjs';
 
 const MOODS = ['romantique et doux', 'romantique nostalgique', 'romantique piano', 'romantique nuit', 'romantique acoustique'];
@@ -38,10 +38,20 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
   const lo = Math.min(tMin, tMax), hi = Math.max(tMin, tMax);
   const randomTarget = (Math.floor(lo / 60) + Math.floor(Math.random() * (Math.floor(hi / 60) - Math.floor(lo / 60) + 1))) * 60;
   const target = targetSec || randomTarget;
-  const mood = MOODS[dayIndex % MOODS.length];
+
+  // Émotion de la vidéo : rotation sans répétition dans la palette dérivée (couvre toute la palette avant de recommencer).
+  const palette = Array.isArray(channel?.emotion_palette) ? channel.emotion_palette : [];
+  let emotion = null;
+  if (palette.length) {
+    const idx = (channel.emotion_cursor || 0) % palette.length;
+    emotion = palette[idx];
+    // On avance le curseur tout de suite (même si le run échoue) pour ne pas rester bloqué sur une émotion.
+    await updateChannel(channel.id, { emotion_cursor: idx + 1 }).catch(() => {});
+  }
+  const mood = emotion?.name || MOODS[dayIndex % MOODS.length];
 
   const [video] = await dbInsert('videos', [{
-    status: 'curating', mood, theme: mood, channel_id: channel?.id || null,
+    status: 'curating', mood, theme: mood, emotion: emotion?.name || null, channel_id: channel?.id || null,
     reference_song_ids: references.map(r => r.id)
   }]);
   const vid = video.id;
@@ -54,9 +64,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
   try {
     // 1. Curation
     await logStep('curate', 'start');
+    if (emotion) await logStep('emotion', 'ok', emotion.name);
     const curation = await curatePlaylist({
       references: references.map(r => ({ spotify_url: r.spotify_url, title: r.title, mood_tags: r.mood_tags })),
-      targetSec: target, moodHint: mood, log
+      targetSec: target, moodHint: mood, emotion, log
     });
     const { tracks, totalSec } = curation;
     if (!tracks.length) throw new Error('curation vide (aucune chanson de référence exploitable)');
@@ -126,7 +137,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
       affiliate_url: channel?.affiliate_url, affiliate_label: channel?.affiliate_label,
       playbook: channel?.playbook
     };
-    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, strategy, log });
+    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, strategy, emotion, log });
     await logStep('metadata', 'ok', meta.title);
 
     // 6. Upload YouTube (brouillon prive)
