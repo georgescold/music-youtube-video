@@ -34,7 +34,8 @@ export async function selectBackgrounds({ channelId, pool, mode = 'slideshow', c
       .sort((a, b) => recency.get(b.id) - recency.get(a.id)); // distance la plus grande d'abord (=le plus ancien)
     chosen = [...eligible, ...stale].slice(0, need);
     if (mode === 'single' || count > 0) {
-      warning = `Pas assez d'images de fond pour respecter l'écart de ${gap} vidéos (${pool.length} image(s) en banque). Réutilisation d'un fond ancien.`;
+      const needTotal = need * (gap + 1); // nb d'images pour ne jamais répéter dans la fenêtre d'écart
+      warning = `Pas assez d'images de fond : ${pool.length} en banque pour un écart de ${gap} vidéos (il en faudrait au moins ${needTotal}). Une image récente a dû être réutilisée. Ajoute des images dans l'onglet Assets pour éviter les doublons.`;
     }
   }
   return { chosen, warning };

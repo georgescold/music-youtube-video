@@ -95,6 +95,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
     const bgVideoAssets = backgroundAssets.filter(a => (a.mime_type || '').startsWith('video'));
     const bgImageAssets = backgroundAssets.filter(a => !(a.mime_type || '').startsWith('video'));
     let chosenBgAssets = backgroundAssets;
+    let bgWarning = null; // alerte "pas assez d'images" -> stockée sur la vidéo + Discord
     if (bgImageAssets.length) {
       const sel = await selectBackgrounds({
         channelId: channel?.id, pool: bgImageAssets,
@@ -104,8 +105,9 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
       });
       chosenBgAssets = [...bgVideoAssets, ...sel.chosen];
       if (sel.warning) {
+        bgWarning = sel.warning;
         await logStep('background', 'warn', sel.warning);
-        if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '⚠️ Fonds', description: sel.warning, color: COLORS.warn }).catch(() => {});
+        if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '⚠️ Images de fond', description: sel.warning, color: COLORS.warn }).catch(() => {});
       }
     }
     const backgrounds = [];
@@ -200,7 +202,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
       youtube_video_id: youtubeId, youtube_url: youtubeUrl, thumbnail_url: thumbnailUrl,
       published_at: finalStatus === 'published' ? new Date().toISOString() : null,
       background_asset: chosenBgAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null,
-      background_asset_ids: chosenBgAssets.map(a => a.id)
+      background_asset_ids: chosenBgAssets.map(a => a.id), note: bgWarning
     });
     await logStep('done', 'ok');
 
