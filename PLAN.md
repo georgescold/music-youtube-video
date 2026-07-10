@@ -234,9 +234,17 @@ music-youtube-video/
   - Tourne actuellement en local sur `http://127.0.0.1:8770` (redémarré depuis, un `git status` a confirmé qu'aucun repo git n'existe encore ici).
 - ✅ **`services/youtube.mjs`** (upload résumable, miniature, changement de statut, suppression) — **testé en conditions réelles** : upload d'un clip synthétique (3s, généré par ffmpeg, aucun contenu réel) en `private`, vérifié existant via l'API, supprimé, ré-vérifié absent (0 résultat). La chaîne ne garde aucune trace de ce test.
 - ℹ️ Réfs Spotify réelles, image de fond et bannière pub : toujours à déposer par l'utilisateur via le panneau (l'écran existe, en attente de contenu).
-- ✅ **Projet Railway créé** (feu vert donné explicitement) : `music-youtube-video`, workspace `georgescold` (id `fa774c03-9dfc-4774-9893-7f20db09795b`), projet id `556766e8-0739-4e83-a6dc-c454d40b72ef`, environnement `production` par défaut. Dossier local lié (`railway status` confirme). **Aucun service/déploiement encore** — pas de code poussé, pas de variables configurées, rien d'exposé publiquement.
-- ⏸️ **Toujours volontairement non entamé** : déploiement effectif (exposerait le panneau + ses vrais secrets sur internet) et push GitHub (action visible) — en attente d'un feu vert explicite séparé avant d'y toucher.
+- ✅ **PROJET COMPLET ET DÉPLOYÉ (2026-07-10)** — tout construit, testé en réel, en ligne.
+  - **URL prod** : https://music-youtube-video-production.up.railway.app (Railway, service `music-youtube-video`, volume persistant `/data`, 9 variables d'env, Dockerfile node:22-slim + ffmpeg + claude-code).
+  - **Repo** : poussé sur `github.com/georgescold/music-youtube-video` (privé), aucun secret commité.
+  - **Pipeline** : `epidemicMcp` (gateway GraphQL — SearchRecordings/DownloadRecording, downloads HQ confirmés) → `curate` → `download` → `ffmpeg` (concat+render+tracklist) → `claude` metadata → `youtube` upload résumable privé → état Supabase. Testé bout en bout en conditions réelles (upload YouTube privé + nettoyage).
+  - **Panneau** : 3 écrans (Vidéos/Assets/Chansons de référence) + génération + validation (valider→public, rejeter, supprimer) + planificateur quotidien 18:00 Europe/Paris.
 
-### Prochaines actions
-1. **Toi** : dire si je configure les variables d'environnement Railway maintenant (secrets déjà dans `.env` local) et/ou si j'initialise + pousse le repo git · sinon, réfs Spotify + image de fond + bannière pub via le panneau (`http://127.0.0.1:8770`).
-2. **Moi** : `services/epidemicMcp.mjs` + `services/ffmpeg.mjs` (rendu) · assembler `pipeline.mjs` · écran "Vidéo du jour" (validation) — puis Phase 0 réelle dès que des réfs Spotify existent.
+### Il reste (côté utilisateur — rien de technique ne bloque)
+1. **Se connecter à l'URL prod** pour créer le compte propriétaire (1er signup = propriétaire).
+2. **Alimenter via le panneau** : chansons de référence Spotify + image de fond + bannière 16:9. Ensuite : 1 brouillon/jour auto → tu valides → publié.
+
+### Dette technique connue
+- Token Epidemic = JWT 30 j (expire ~2026-08-07) → prévoir un refresh OAuth avant expiration.
+- Asset pub actuel = 9:16 vertical (Shorts), pas une bannière 16:9 pour le long-format.
+- Compte panneau : se connecter vite pour fermer la fenêtre de 1er-signup.
