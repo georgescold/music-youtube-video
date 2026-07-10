@@ -20,7 +20,10 @@
 /* Bouton bascule de thème (réutilise .btn-ghost des pages). */
 .theme-toggle { cursor: pointer; line-height: 1; padding: 6px 11px; font-size: 14px; }
 
-/* Le titre du header ne passe jamais à la ligne, même avec le sélecteur de chaîne. */
+/* Header : assez de largeur pour respirer avec le sélecteur de chaîne, écarts unifiés entre les pages. */
+.topbar-inner { max-width: 1140px !important; gap: 20px; }
+.topbar-right { gap: 14px !important; }
+.nav { margin-right: 6px; }
 .brand { white-space: nowrap; }
 
 /* Sélecteur de chaîne dans le header (partagé). */
