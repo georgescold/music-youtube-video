@@ -153,6 +153,13 @@
 
   <h2>Publication &amp; Discord</h2>
   <div class="card">
+    <div class="field" style="margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px;font-weight:600;color:var(--color-ink)">
+        <input type="checkbox" id="f-cron_enabled" style="width:16px;height:16px;cursor:pointer">
+        Génération automatique quotidienne (CRON)
+      </label>
+      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Si activé : une vidéo est générée chaque jour dans la fenêtre horaire choisie. Si désactivé : rien ne se génère seul, tu génères manuellement via « Générer une vidéo ».</div>
+    </div>
     <div class="field"><label>Mode de publication</label>
       <select id="f-publish_mode" style="width:100%">
         <option value="review">Brouillon + validation manuelle (recommandé)</option>
@@ -214,6 +221,7 @@ async function loadSettings() {
   $('f-slideshow_count').value = s.settings.slideshow_count ?? 0;
   $('f-reuse_gap').value = s.settings.reuse_gap ?? 30;
   syncBgMode();
+  $('f-cron_enabled').checked = !!s.cron_enabled;
   $('f-publish_mode').value = s.publish_mode || 'review';
   $('f-discord_webhook').placeholder = (s.discord && s.discord.configured) ? '•••• configuré — laisse vide pour ne pas changer' : 'https://discord.com/api/webhooks/…';
 }
@@ -234,6 +242,7 @@ $('save').onclick = async () => {
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
     ad_intro: $('f-ad_intro').checked, ad_outro: $('f-ad_outro').checked,
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
+    cron_enabled: $('f-cron_enabled').checked,
     publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value
   };
   const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();

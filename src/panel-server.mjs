@@ -61,12 +61,15 @@ function msUntilNextDaily(start, end) {
 async function setupScheduler() {
   if (genTimer) clearTimeout(genTimer);
   const ch = await getActiveChannel().catch(() => null);
+  if (!ch?.cron_enabled) { console.log('[scheduler] CRON désactivé — aucune génération automatique programmée.'); return; }
   const start = ch?.publish_time_start || (ch?.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
   const end = ch?.publish_time_end || start;
   const { wait, at } = msUntilNextDaily(start, end);
   genTimer = setTimeout(async () => {
-    console.log('[scheduler] génération quotidienne');
-    generateOnce({ dryRun: false });
+    // Re-vérifie l'interrupteur au moment de tirer (il a pu être coupé entre-temps).
+    const cur = await getActiveChannel().catch(() => null);
+    if (cur?.cron_enabled) { console.log('[scheduler] génération quotidienne'); generateOnce({ dryRun: false }); }
+    else console.log('[scheduler] CRON désactivé au dernier moment — génération annulée.');
     setupScheduler();
   }, wait);
   console.log(`[scheduler] prochaine génération dans ${Math.round(wait / 60000)} min — ${at.toLocaleTimeString('fr-FR')} (fenêtre ${start}–${end} ${process.env.TZ})`);
@@ -403,6 +406,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.ad_outro === 'boolean') patch.ad_outro = b.ad_outro;
       if (typeof b.discord_webhook === 'string' && b.discord_webhook.trim()) { const w = b.discord_webhook.trim(); if (isDiscordWebhook(w)) patch.discord_webhook = w; else return json(res, { ok: false, error: 'Webhook Discord invalide (https://discord.com/api/webhooks/…)' }); }
       if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
+      if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       if (b.background_mode === 'single' || b.background_mode === 'slideshow') patch.background_mode = b.background_mode;
       if (b.slideshow_count != null) patch.slideshow_count = Math.max(0, Math.min(100, Number(b.slideshow_count) || 0));
       if (b.reuse_gap != null) patch.reuse_gap = Math.max(0, Math.min(365, Number(b.reuse_gap) || 0));
@@ -411,8 +415,8 @@ const server = http.createServer(async (req, res) => {
         if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
       }
       const updated = await updateChannel(ch.id, patch);
-      // Si la fenêtre horaire a changé, on reprogramme la prochaine génération.
-      if (patch.publish_time_start || patch.publish_time_end) setupScheduler().catch(() => {});
+      // Si la fenêtre horaire ou l'interrupteur du CRON a changé, on reprogramme.
+      if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch) setupScheduler().catch(() => {});
       return json(res, { ok: true, channel: channelPublicView(updated) });
     }
     if (req.method === 'POST' && path === '/api/test/discord') {
