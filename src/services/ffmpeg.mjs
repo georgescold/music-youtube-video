@@ -36,7 +36,12 @@ export function generateDefaultBackground(outPath, width = 1920, height = 1080) 
   return outPath;
 }
 
+// Écart minimal garanti entre deux fenêtres de pub (secondes). Deux fenêtres plus proches
+// que ça sont fusionnées -> garantit qu'elles ne se touchent jamais.
+const AD_MIN_GAP = 1;
+
 // Calcule les fenêtres d'apparition des pubs : intro (option), toutes les `freqMin` min, outro (option).
+// RÈGLE : les fenêtres renvoyées sont TOUJOURS strictement disjointes (aucun chevauchement ni contact).
 export function adIntervals(durationSec, freqMin, durSec, { intro = true, outro = true } = {}) {
   const D = durationSec, dur = Math.min(durSec, D);
   const out = [];
@@ -45,13 +50,13 @@ export function adIntervals(durationSec, freqMin, durSec, { intro = true, outro 
   for (let t = step; t < D - dur; t += step) out.push([t, Math.min(t + dur, D)]);
   if (outro) out.push([Math.max(0, D - dur), D]);
   if (!out.length) return [];
-  // fusionne les fenêtres qui se chevauchent (ex : freq très courte)
+  // Fusionne toute fenêtre qui chevauche, touche, ou est à moins de AD_MIN_GAP de la précédente.
   out.sort((a, b) => a[0] - b[0]);
-  const merged = [out[0]];
+  const merged = [out[0].slice()];
   for (let i = 1; i < out.length; i++) {
     const last = merged[merged.length - 1];
-    if (out[i][0] <= last[1]) last[1] = Math.max(last[1], out[i][1]);
-    else merged.push(out[i]);
+    if (out[i][0] <= last[1] + AD_MIN_GAP) last[1] = Math.max(last[1], out[i][1]);
+    else merged.push(out[i].slice());
   }
   return merged;
 }
@@ -88,11 +93,13 @@ export function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, ad
   }
 
   // ── Pubs : chaque pub a SA position (ad.placement), fenêtres réparties, assets en rotation ──
+  // RÈGLE HARDCODÉE : jamais 2 pubs au même instant. Garanti par construction — les fenêtres
+  // sont strictement disjointes (adIntervals) et chaque fenêtre est attribuée à UNE seule pub.
   const windows = adIntervals(D, adFrequencyMin, adDurationSec, { intro: adIntro, outro: adOutro });
   let vLabel = bgLabel;
   if (ads.length && windows.length) {
     const perAd = ads.map(() => []);
-    windows.forEach((w, k) => perAd[k % ads.length].push(w));
+    windows.forEach((w, k) => perAd[k % ads.length].push(w)); // fenêtre k -> pub (k mod n) : une seule pub par fenêtre
     ads.forEach((ad, ai) => {
       const mine = perAd[ai];
       if (!mine.length) return;
