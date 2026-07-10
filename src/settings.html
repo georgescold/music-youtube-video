@@ -125,6 +125,21 @@
     </div>
   </div>
 
+  <h2>Images de fond</h2>
+  <div class="card">
+    <p class="hint" style="margin:-2px 0 14px">Le logiciel utilise <b>uniquement les images que tu déposes</b> (onglet Assets), telles quelles. Règle anti-répétition : une image de fond n'est <b>jamais réutilisée avant l'écart choisi</b>, et un titre n'est jamais réutilisé.</p>
+    <div class="field"><label>Fond par vidéo</label>
+      <select id="f-background_mode" style="width:100%">
+        <option value="single">Une seule image fixe</option>
+        <option value="slideshow">Diaporama (plusieurs images qui défilent)</option>
+      </select>
+    </div>
+    <div class="grid2">
+      <div class="field" id="wrap-slideshow_count"><label>Images par diaporama (0 = toutes les éligibles)</label><input id="f-slideshow_count" type="number" min="0" max="100"></div>
+      <div class="field"><label>Écart avant de réutiliser un fond (vidéos)</label><input id="f-reuse_gap" type="number" min="0" max="365"></div>
+    </div>
+  </div>
+
   <h2>Publication &amp; Discord</h2>
   <div class="card">
     <div class="field"><label>Mode de publication</label>
@@ -182,9 +197,18 @@ async function loadSettings() {
   $('f-ad_dur').value = s.settings.ad_duration_sec ?? 8;
   $('f-ad_intro').checked = s.settings.ad_intro !== false;
   $('f-ad_outro').checked = s.settings.ad_outro !== false;
+  $('f-background_mode').value = s.settings.background_mode || 'slideshow';
+  $('f-slideshow_count').value = s.settings.slideshow_count ?? 0;
+  $('f-reuse_gap').value = s.settings.reuse_gap ?? 30;
+  syncBgMode();
   $('f-publish_mode').value = s.publish_mode || 'review';
   $('f-discord_webhook').placeholder = (s.discord && s.discord.configured) ? '•••• configuré — laisse vide pour ne pas changer' : 'https://discord.com/api/webhooks/…';
 }
+
+function syncBgMode() {
+  $('wrap-slideshow_count').style.display = $('f-background_mode').value === 'single' ? 'none' : '';
+}
+$('f-background_mode').addEventListener('change', syncBgMode);
 
 $('save').onclick = async () => {
   $('save').disabled = true; $('savemsg').textContent = 'Enregistrement…';
@@ -195,6 +219,7 @@ $('save').onclick = async () => {
     daily_publish_time: $('f-daily_publish_time').value, target_duration_sec: Number($('f-target_min').value) * 60, utm_base: $('f-utm_base').value,
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
     ad_intro: $('f-ad_intro').checked, ad_outro: $('f-ad_outro').checked,
+    background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
     publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value
   };
   const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();

@@ -11,17 +11,27 @@ const TITLE_SEEDS = [
   "Écoute ça quand tout va bien et que tu es amoureux"
 ];
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, log = () => {} }) {
+// Normalise un titre pour comparer (minuscules, sans ponctuation ni espaces multiples).
+function normTitle(t) {
+  return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], log = () => {} }) {
   const system = [
     "Tu es un expert du SEO YouTube pour les chaînes de playlists de musique d'amour francophones.",
     "Le format qui marche : un TITRE émotionnel à la 2e personne (style « POV : ... » ou scénario intime), en français, avec la balise [Playlist].",
+    "Le titre doit être le plus deep et émotionnel possible, et TOUJOURS différent des titres déjà publiés.",
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."
   ].join('\n');
 
-  const user = [
+  const avoidSet = new Set(avoidTitles.map(normTitle));
+  const buildUser = (extraAvoid = []) => [
     `Ambiance de la playlist : ${mood}.`,
     `Voici des exemples de tons de titres appréciés (inspire-toi du style, n'en recopie aucun mot pour mot) :`,
     TITLE_SEEDS.map(s => '- ' + s).join('\n'),
+    (avoidTitles.length || extraAvoid.length) ? '\nNe RÉUTILISE JAMAIS aucun de ces titres déjà publiés (ni une variante quasi identique) :' : '',
+    [...avoidTitles, ...extraAvoid].slice(-40).map(s => '- ' + s).join('\n'),
     '',
     'Génère :',
     '- "title" : un titre YouTube accrocheur (60-70 caractères max), en français, incluant [Playlist].',
@@ -31,11 +41,17 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     '- "tags" : 10 tags YouTube (mots ou expressions courtes).',
     '',
     'Format EXACT : {"title":"...","hook":"...","keywords":["..."],"hashtags":["..."],"tags":["..."]}'
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   log('génération métadonnées via Claude…');
-  const raw = await askClaude(system, user, 'sonnet');
-  const meta = extractJson(raw);
+  let meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
+  // Anti-doublon : si le titre existe déjà, on régénère (jusqu'à 3 fois) en le mettant explicitement à éviter.
+  const extraAvoid = [];
+  for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) {
+    log(`titre déjà utilisé ("${meta.title}") — nouvelle génération…`);
+    extraAvoid.push(meta.title);
+    meta = extractJson(await askClaude(system, buildUser(extraAvoid), 'sonnet'));
+  }
 
   const tracklistText = tracklist.map(l => `${l.stamp} ${l.title}${l.artist ? ' — ' + l.artist : ''}`).join('\n');
   const compaatibleBlock = [

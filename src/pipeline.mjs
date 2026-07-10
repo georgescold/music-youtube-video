@@ -8,6 +8,7 @@ import { curatePlaylist, durationSec } from './steps/curate.mjs';
 import { downloadAll } from './steps/download.mjs';
 import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground } from './services/ffmpeg.mjs';
 import { generateMetadata } from './steps/metadata.mjs';
+import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus } from './services/youtube.mjs';
 import { getActiveChannel } from './services/channels.mjs';
 import { sendDiscord, COLORS } from './services/notify.mjs';
@@ -67,8 +68,26 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     await logStep('render', 'start');
     const audioPath = concatAudio(withPaths.map(t => t.path), join(workDir, 'mix.mp3'));
     const tracklist = buildTracklist(withPaths);
+
+    // Sélection des fonds : jamais réutilisés avant `reuse_gap` vidéos ; mode single/diaporama configurable.
+    const bgVideoAssets = backgroundAssets.filter(a => (a.mime_type || '').startsWith('video'));
+    const bgImageAssets = backgroundAssets.filter(a => !(a.mime_type || '').startsWith('video'));
+    let chosenBgAssets = backgroundAssets;
+    if (bgImageAssets.length) {
+      const sel = await selectBackgrounds({
+        channelId: channel?.id, pool: bgImageAssets,
+        mode: channel?.background_mode || 'slideshow',
+        count: channel?.slideshow_count ?? 0,
+        gap: channel?.reuse_gap ?? 30
+      });
+      chosenBgAssets = [...bgVideoAssets, ...sel.chosen];
+      if (sel.warning) {
+        await logStep('background', 'warn', sel.warning);
+        if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '⚠️ Fonds', description: sel.warning, color: COLORS.warn }).catch(() => {});
+      }
+    }
     const backgrounds = [];
-    for (const a of backgroundAssets) backgrounds.push(await fetchAssetFile(a, workDir));
+    for (const a of chosenBgAssets) backgrounds.push(await fetchAssetFile(a, workDir));
     const ads = [];
     for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
     const outPath = join(workDir, 'video.mp4');
@@ -94,7 +113,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
     await logStep('metadata', 'start');
     const utmBase = channel?.utm_base || 'https://compaatible.app/';
     const utmUrl = utmBase + (utmBase.includes('?') ? '&' : '?') + 'utm_source=youtube&utm_campaign=aubonmoment&utm_content=' + vid;
-    const meta = await generateMetadata({ tracklist, mood, utmUrl, log });
+    // Titres déjà utilisés sur la chaîne -> jamais réutiliser le même.
+    const prior = await dbSelect('videos', `?title=not.is.null${chanFilter}&select=title&order=created_at.desc&limit=200`).catch(() => []);
+    const avoidTitles = prior.map(v => v.title).filter(Boolean);
+    const meta = await generateMetadata({ tracklist, mood, utmUrl, avoidTitles, log });
     await logStep('metadata', 'ok', meta.title);
 
     // 6. Upload YouTube (brouillon prive)
@@ -124,7 +146,8 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, log
       title: meta.title, description: meta.description, tags: meta.tags,
       duration_sec: durSec, utm_url: utmUrl, theme: curation.understanding || mood,
       youtube_video_id: youtubeId, youtube_url: youtubeUrl,
-      background_asset: backgroundAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null
+      background_asset: chosenBgAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null,
+      background_asset_ids: chosenBgAssets.map(a => a.id)
     });
     await logStep('done', 'ok');
 

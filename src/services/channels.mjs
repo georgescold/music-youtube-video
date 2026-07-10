@@ -26,7 +26,7 @@ export async function setActiveChannel(id) {
 }
 export async function updateChannel(id, patch) {
   const p = {};
-  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'daily_publish_time', 'target_duration_sec', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode'];
+  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'daily_publish_time', 'target_duration_sec', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'background_mode', 'slideshow_count', 'reuse_gap'];
   for (const k of plain) if (k in patch) p[k] = patch[k];
   if (patch.ad_placement && typeof patch.ad_placement === 'object') {
     const q = patch.ad_placement, clamp = (v, d) => Math.min(1, Math.max(0, Number(v) ?? d));
@@ -57,6 +57,6 @@ export function channelPublicView(ch) {
     youtube: { configured: !!ch.yt_refresh_token, clientId: ch.yt_client_id || null, clientIdMask: mask(ch.yt_client_id), channelId: ch.yt_channel_id || null, hasSecret: !!ch.yt_client_secret, hasRefresh: !!ch.yt_refresh_token },
     epidemic: { configured: !!ch.epidemic_jwt, mask: mask(decrypt(ch.epidemic_jwt)) },
     claude: { configured: !!ch.claude_token, mask: mask(decrypt(ch.claude_token)) },
-    settings: { daily_publish_time: ch.daily_publish_time, target_duration_sec: ch.target_duration_sec, utm_base: ch.utm_base, ad_frequency_min: ch.ad_frequency_min, ad_duration_sec: ch.ad_duration_sec, ad_placement: ch.ad_placement || { x: 0.68, y: 0.55, w: 0.28, h: 0.40 }, ad_intro: ch.ad_intro !== false, ad_outro: ch.ad_outro !== false }
+    settings: { daily_publish_time: ch.daily_publish_time, target_duration_sec: ch.target_duration_sec, utm_base: ch.utm_base, ad_frequency_min: ch.ad_frequency_min, ad_duration_sec: ch.ad_duration_sec, ad_placement: ch.ad_placement || { x: 0.68, y: 0.55, w: 0.28, h: 0.40 }, ad_intro: ch.ad_intro !== false, ad_outro: ch.ad_outro !== false, background_mode: ch.background_mode || 'slideshow', slideshow_count: ch.slideshow_count ?? 0, reuse_gap: ch.reuse_gap ?? 30 }
   };
 }
