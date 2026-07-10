@@ -18,7 +18,9 @@ export function resolveModel(m) {
 
 export function askClaude(system, user, model, opts = {}) {
   return new Promise((resolve, reject) => {
-    if (!process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+    // Multi-tenant : opts.token permet d'utiliser le token Claude d'une chaîne donnée.
+    const token = opts.token || process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    if (!token) {
       return reject(new Error('CLAUDE_CODE_OAUTH_TOKEN manquant. Lance `claude setup-token`.'));
     }
     const bin = resolveClaude();
@@ -30,6 +32,7 @@ export function askClaude(system, user, model, opts = {}) {
 
     const env = { ...process.env };
     for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_CODE_') && k !== 'CLAUDE_CODE_OAUTH_TOKEN') delete env[k];
+    env.CLAUDE_CODE_OAUTH_TOKEN = token;
     delete env.CLAUDECODE;
 
     let child;

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Paramètres — The Playlist Youtube</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --color-paper: #ffffff; --color-soft: #faf8f4; --color-soft2: #f2efe9;
+    --color-ink: #181715; --color-mut: #6e6a62; --color-mut2: #a6a199;
+    --color-rule: #ece9e3; --color-rule2: #dedad2;
+    --ok: #3f7a55; --ko: #b3413a;
+  }
+  html { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .topbar { border-bottom: 1px solid var(--color-rule); }
+  .topbar-inner { max-width: 880px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .nav { display: flex; align-items: center; gap: 4px; }
+  .nav a { color: var(--color-mut); font-size: 13px; font-weight: 600; text-decoration: none; padding: 6px 12px; border-radius: 100px; }
+  .nav a:hover { color: var(--color-ink); background: var(--color-soft); }
+  .nav a.active { color: var(--color-ink); background: var(--color-soft2); }
+  .btn-ghost { display: inline-flex; align-items: center; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-rule2); border-radius: 100px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .btn-ghost:hover { background: var(--color-soft); border-color: var(--color-ink); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 24px 64px; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
+  .page-sub { color: var(--color-mut); font-size: 13px; margin: 0 0 28px; }
+
+  .card { background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-title { font-weight: 700; font-size: 14px; }
+  .card-desc { color: var(--color-mut); font-size: 12.5px; margin-top: 3px; }
+  .val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--color-mut); margin-top: 8px; }
+  .btn { background: var(--color-ink); color: var(--color-paper); border: 0; border-radius: 100px; padding: 8px 16px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .result { font-size: 12.5px; margin-top: 12px; min-height: 1.2em; display: flex; align-items: center; gap: 7px; }
+  .result.ok { color: var(--ok); }
+  .result.ko { color: var(--ko); }
+  .dot { width: 8px; height: 8px; border-radius: 100px; flex-shrink: 0; }
+  .dot.ok { background: var(--ok); } .dot.ko { background: var(--ko); }
+  .note { background: var(--color-soft); border: 1px solid var(--color-rule); border-radius: 10px; padding: 14px 16px; font-size: 12.5px; color: var(--color-mut); margin-top: 22px; }
+  .note b { color: var(--color-ink); }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">The Playlist Youtube</span>
+    <div class="topbar-right">
+      <nav class="nav">
+        <a href="/videos">Vidéos</a>
+        <a href="/">Assets</a>
+        <a href="/references">Chansons de référence</a>
+        <a href="/settings" class="active">Paramètres</a>
+      </nav>
+      <a class="btn-ghost" href="#" id="logout">Déconnexion</a>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+  <h1>Paramètres</h1>
+  <p class="page-sub">Vérifie que chaque connexion fonctionne. Un test réel est envoyé au fournisseur.</p>
+
+  <div class="card" id="card-youtube">
+    <div class="card-head">
+      <div><div class="card-title">YouTube</div><div class="card-desc">Compte propriétaire de la chaîne (upload des vidéos).</div><div class="val" id="v-youtube">…</div></div>
+      <button class="btn" data-p="youtube">Tester la connexion</button>
+    </div>
+    <div class="result" id="r-youtube"></div>
+  </div>
+
+  <div class="card" id="card-epidemic">
+    <div class="card-head">
+      <div><div class="card-title">Epidemic Sound</div><div class="card-desc">Accès au catalogue musical (curation + téléchargement).</div><div class="val" id="v-epidemic">…</div></div>
+      <button class="btn" data-p="epidemic">Tester la connexion</button>
+    </div>
+    <div class="result" id="r-epidemic"></div>
+  </div>
+
+  <div class="card" id="card-claude">
+    <div class="card-head">
+      <div><div class="card-title">Claude</div><div class="card-desc">Génération des titres, descriptions et curation.</div><div class="val" id="v-claude">…</div></div>
+      <button class="btn" data-p="claude">Tester la connexion</button>
+    </div>
+    <div class="result" id="r-claude"></div>
+  </div>
+
+  <div class="note">
+    <b>Bientôt :</b> édition des clés par chaîne, gestion de plusieurs chaînes et comptes utilisateurs. Pour l'instant cette page teste les clés de la chaîne active.
+  </div>
+</div>
+
+<script>
+document.getElementById('logout').onclick = async (e) => { e.preventDefault(); await fetch('/api/auth/logout', { method: 'POST' }); location.href = '/login'; };
+
+async function loadState() {
+  const s = await (await fetch('/api/settings')).json();
+  document.getElementById('v-youtube').textContent = s.youtube.configured ? ('client ' + s.youtube.clientId + (s.youtube.channelId ? ' · ' + s.youtube.channelId : '')) : 'non configuré';
+  document.getElementById('v-epidemic').textContent = s.epidemic.configured ? ('token ' + s.epidemic.jwt) : 'non configuré';
+  document.getElementById('v-claude').textContent = s.claude.configured ? ('token ' + s.claude.token) : 'non configuré';
+}
+
+for (const btn of document.querySelectorAll('.btn[data-p]')) {
+  btn.onclick = async () => {
+    const p = btn.dataset.p;
+    const r = document.getElementById('r-' + p);
+    btn.disabled = true; r.className = 'result'; r.innerHTML = 'Test en cours…';
+    try {
+      const d = await (await fetch('/api/test/' + p, { method: 'POST' })).json();
+      r.className = 'result ' + (d.ok ? 'ok' : 'ko');
+      r.innerHTML = '<span class="dot ' + (d.ok ? 'ok' : 'ko') + '"></span>' + (d.ok ? 'Connexion validée' : 'Échec') + ' — ' + (d.detail || '');
+    } catch (e) { r.className = 'result ko'; r.innerHTML = '<span class="dot ko"></span>Erreur réseau'; }
+    btn.disabled = false;
+  };
+}
+loadState();
+</script>
+</body>
+</html>

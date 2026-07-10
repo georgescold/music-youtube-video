@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, storageDelete } from './services/supabase.mjs';
 import { runPipeline } from './pipeline.mjs';
 import { setPrivacyStatus, deleteVideo } from './services/youtube.mjs';
+import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -203,6 +204,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/videos') {
       return send(res, 200, 'text/html; charset=utf-8', await readFile(join(__dirname, 'videos.html')));
     }
+    if (req.method === 'GET' && path === '/settings') {
+      return send(res, 200, 'text/html; charset=utf-8', await readFile(join(__dirname, 'settings.html')));
+    }
 
     // ── Assets ──
     if (req.method === 'GET' && path === '/api/assets') {
@@ -329,6 +333,26 @@ const server = http.createServer(async (req, res) => {
         await dbDelete('videos', `id=eq.${b.id}`);
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+    }
+
+    // ── Paramètres : état + tests de connexion (chaîne courante = credentials d'environnement pour l'instant) ──
+    if (req.method === 'GET' && path === '/api/settings') {
+      const mask = v => v ? (String(v).slice(0, 4) + '…' + String(v).slice(-4)) : null;
+      return json(res, {
+        youtube: { configured: !!process.env.YOUTUBE_REFRESH_TOKEN, clientId: mask(process.env.YOUTUBE_CLIENT_ID), channelId: process.env.YOUTUBE_CHANNEL_ID || null },
+        epidemic: { configured: !!process.env.EPIDEMIC_JWT, jwt: mask(process.env.EPIDEMIC_JWT) },
+        claude: { configured: !!process.env.CLAUDE_CODE_OAUTH_TOKEN, token: mask(process.env.CLAUDE_CODE_OAUTH_TOKEN) },
+        schedule: { daily_publish_time: (await dbSelect('settings', '?limit=1').catch(() => []))[0]?.daily_publish_time || '18:00' }
+      });
+    }
+    if (req.method === 'POST' && path === '/api/test/youtube') {
+      return json(res, await testYouTube({ clientId: process.env.YOUTUBE_CLIENT_ID, clientSecret: process.env.YOUTUBE_CLIENT_SECRET, refreshToken: process.env.YOUTUBE_REFRESH_TOKEN }));
+    }
+    if (req.method === 'POST' && path === '/api/test/epidemic') {
+      return json(res, await testEpidemic(process.env.EPIDEMIC_JWT));
+    }
+    if (req.method === 'POST' && path === '/api/test/claude') {
+      return json(res, await testClaude(process.env.CLAUDE_CODE_OAUTH_TOKEN));
     }
 
     send(res, 404, 'text/plain', 'Not found');
