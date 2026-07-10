@@ -33,8 +33,11 @@ export function buildTracklist(tracks) {
 }
 
 // Assemble la video finale.
-export function renderVideo({ backgroundPath, audioPath, bannerPath, outPath, width = 1920, height = 1080, log = () => {} }) {
-  const inputs = ['-loop', '1', '-i', backgroundPath];
+export function renderVideo({ backgroundPath, audioPath, bannerPath, outPath, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, log = () => {} }) {
+  // Fond statique -> tres peu d'images/seconde suffisent. A 24 fps une video de 90 min = ~130k images
+  // a encoder pour une image immobile (tres lent sur CPU contraint). A 4 fps c'est ~6x plus rapide,
+  // sans difference visible (l'image ne bouge pas). Overridable via RENDER_FPS.
+  const inputs = ['-loop', '1', '-framerate', String(fps), '-i', backgroundPath];
   if (bannerPath) inputs.push('-i', bannerPath);
   inputs.push('-i', audioPath);
   const audioIdx = bannerPath ? 2 : 1;
@@ -49,7 +52,7 @@ export function renderVideo({ backgroundPath, audioPath, bannerPath, outPath, wi
 
   const args = ['-y', ...inputs,
     '-filter_complex', filter, '-map', vmap, '-map', `${audioIdx}:a`,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-r', '24',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', outPath];
   log('ffmpeg render…');
   execFileSync(FF, args, { stdio: 'ignore' });
