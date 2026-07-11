@@ -321,6 +321,10 @@ const server = http.createServer(async (req, res) => {
       const kind = q.get('kind') || 'other';
       const filename = decodeURIComponent(q.get('filename') || 'fichier');
       const contentType = req.headers['content-type'] || 'application/octet-stream';
+      // Fond & Pub doivent être des médias (image/vidéo), sinon FFmpeg plante au montage.
+      if ((kind === 'background' || kind === 'ad') && !/^(image|video)\//.test(contentType)) {
+        return json(res, { ok: false, error: `« ${filename} » n'est pas une image/vidéo (${contentType}). Fond et Publicité n'acceptent que des images ou vidéos.` });
+      }
       const chunks = []; let size = 0; let tooBig = false;
       for await (const chunk of req) {
         size += chunk.length;

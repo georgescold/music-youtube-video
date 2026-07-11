@@ -32,8 +32,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
   const chanFilter = channel ? `&channel_id=eq.${channel.id}` : '';
   const references = await dbSelect('reference_songs', '?active=eq.true' + chanFilter);
   const assets = await dbSelect('assets', '?active=eq.true' + chanFilter);
-  const backgroundAssets = assets.filter(a => a.kind === 'background');
-  const adAssets = assets.filter(a => a.kind === 'ad');
+  // Sécurité : seuls les vrais médias (image/vidéo) sont utilisables au montage (ex : un .html importé par erreur ferait planter FFmpeg).
+  const isMedia = a => /^(image|video)\//.test(a.mime_type || '');
+  const backgroundAssets = assets.filter(a => a.kind === 'background' && isMedia(a));
+  const adAssets = assets.filter(a => a.kind === 'ad' && isMedia(a));
 
   // Durée cible : tirée au hasard dans la fourchette [min, max] de la chaîne (arrondie à la minute).
   const tMin = channel?.target_min_sec ?? channel?.target_duration_sec ?? 5400;

@@ -26,13 +26,17 @@ export function probeDuration(path) {
 function runFF(args, { controller, label = 'ffmpeg' } = {}) {
   return new Promise((resolve, reject) => {
     if (controller?.cancelled) return reject(new Error('cancelled'));
-    const child = spawn(FF, args, { stdio: 'ignore' });
+    const child = spawn(FF, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     if (controller) controller.child = child;
+    let err = '';
+    child.stderr.on('data', d => { err += d; if (err.length > 8000) err = err.slice(-8000); }); // capture la vraie erreur FFmpeg
     child.on('error', reject);
     child.on('close', (code, signal) => {
       if (controller && controller.child === child) controller.child = null;
       if (signal || controller?.cancelled) return reject(new Error('cancelled'));
-      code === 0 ? resolve() : reject(new Error(`${label} a échoué (code ${code})`));
+      if (code === 0) return resolve();
+      const tail = err.trim().split('\n').filter(Boolean).slice(-4).join(' | ').slice(0, 400);
+      reject(new Error(`${label} a échoué (code ${code})${tail ? ' : ' + tail : ''}`));
     });
   });
 }
