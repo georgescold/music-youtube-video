@@ -10,7 +10,7 @@ import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, stor
 import { runPipeline } from './pipeline.mjs';
 import { setPrivacyStatus, deleteVideo, getMyChannel } from './services/youtube.mjs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
-import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView, propagateSharedCreds } from './services/channels.mjs';
+import { listChannels, getActiveChannel, getChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView, propagateSharedCreds } from './services/channels.mjs';
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
 import { deriveEmotions } from './steps/emotions.mjs';
@@ -360,9 +360,23 @@ const server = http.createServer(async (req, res) => {
 
     // ── Chansons de référence ──
     if (req.method === 'GET' && path === '/api/references') {
-      const ch = await getActiveChannel();
-      const rows = await dbSelect('reference_songs', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=added_at.desc');
+      const chId = q.get('channel_id') || (await getActiveChannel())?.id;
+      const rows = await dbSelect('reference_songs', (chId ? `?channel_id=eq.${chId}&` : '?') + 'order=added_at.desc');
       return json(res, rows);
+    }
+    // Vidéos références d'une chaîne donnée (inspiration_urls), scopées par channel_id.
+    if (req.method === 'GET' && path === '/api/references/videos') {
+      const chId = q.get('channel_id');
+      const ch = chId ? await getChannel(chId) : await getActiveChannel();
+      return json(res, { inspiration_urls: Array.isArray(ch?.inspiration_urls) ? ch.inspiration_urls : [] });
+    }
+    if (req.method === 'POST' && path === '/api/references/videos') {
+      const b = await readJsonBody(req);
+      const chId = b.channel_id || (await getActiveChannel())?.id;
+      if (!chId) return json(res, { ok: false, error: 'chaîne requise' });
+      const urls = Array.isArray(b.inspiration_urls) ? b.inspiration_urls.map(s => String(s).trim()).filter(Boolean).slice(0, 50) : [];
+      await updateChannel(chId, { inspiration_urls: urls });
+      return json(res, { ok: true });
     }
     if (req.method === 'POST' && path === '/api/references') {
       const b = await readJsonBody(req);
@@ -380,8 +394,8 @@ const server = http.createServer(async (req, res) => {
             if (oembed?.title) title = oembed.title;
           } catch {}
         }
-        const ch = await getActiveChannel();
-        const [row] = await dbInsert('reference_songs', [{ spotify_url: spotifyUrl, title, artist, mood_tags: moodTags, channel_id: ch?.id || null }]);
+        const chId = b.channel_id || (await getActiveChannel())?.id;
+        const [row] = await dbInsert('reference_songs', [{ spotify_url: spotifyUrl, title, artist, mood_tags: moodTags, channel_id: chId || null }]);
         return json(res, { ok: true, reference: row });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }

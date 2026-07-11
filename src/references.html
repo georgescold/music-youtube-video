@@ -111,7 +111,13 @@
 </div>
 <div class="wrap">
   <h1>Références</h1>
-  <p class="page-sub">Tes exemples pour cette chaîne : les <b>chansons</b> qui orientent le style/mood, et les <b>vidéos références</b> (ou chaînes) dont on reprend les codes. Ils nourrissent le playbook des titres et la palette d'émotions.</p>
+  <p class="page-sub">Les références sont <b>propres à chaque chaîne</b>. Choisis la chaîne, puis ajoute ses <b>chansons</b> (style/mood) et ses <b>vidéos références</b> (codes de titres/miniatures). Elles nourrissent le playbook et la palette d'émotions.</p>
+
+  <div class="form-card" style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+    <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--color-mut);margin:0">Chaîne</label>
+    <select id="ref-channel" style="min-width:220px;padding:9px 11px;background:var(--color-paper);border:1px solid var(--color-rule2);border-radius:8px;font-size:13.5px;color:var(--color-ink);font-family:var(--font-sans);cursor:pointer"></select>
+    <span style="font-size:12px;color:var(--color-mut2)">Tu ajoutes des références à CETTE chaîne (sans changer la chaîne active).</span>
+  </div>
 
   <h2 style="margin-top:8px">Chansons de référence</h2>
   <div class="form-card">
@@ -159,6 +165,23 @@ const btn = document.getElementById('btn');
 const msg = document.getElementById('msg');
 const list = document.getElementById('list');
 const empty = document.getElementById('empty');
+const refChannel = document.getElementById('ref-channel');
+let channelId = null; // chaîne pour laquelle on gère les références (indépendant de la chaîne active)
+
+// Charge la liste des chaînes dans le sélecteur (défaut = chaîne active).
+async function initChannelSelector() {
+  try {
+    const d = await (await fetch('/api/channels')).json();
+    refChannel.innerHTML = '';
+    (d.channels || []).forEach(c => {
+      const o = document.createElement('option'); o.value = c.id; o.textContent = c.name + (c.is_active ? ' (active)' : '');
+      refChannel.appendChild(o);
+    });
+    channelId = d.activeId || (d.channels && d.channels[0] && d.channels[0].id) || null;
+    if (channelId) refChannel.value = channelId;
+  } catch (e) {}
+  refChannel.addEventListener('change', () => { channelId = refChannel.value; load(); loadVideoRefs(); });
+}
 
 f.onsubmit = async (e) => {
   e.preventDefault();
@@ -167,6 +190,7 @@ f.onsubmit = async (e) => {
     const r = await fetch('/api/references', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        channel_id: channelId,
         spotify_url: document.getElementById('spotify_url').value.trim(),
         mood_tags: document.getElementById('mood_tags').value.trim()
       })
@@ -181,7 +205,7 @@ f.onsubmit = async (e) => {
 function fmtDate(s) { return new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }); }
 
 async function load() {
-  const rows = await (await fetch('/api/references')).json();
+  const rows = await (await fetch('/api/references' + (channelId ? '?channel_id=' + channelId : ''))).json();
   list.innerHTML = '';
   empty.style.display = rows.length ? 'none' : 'block';
   for (const r of rows) {
@@ -211,29 +235,27 @@ async function load() {
     list.appendChild(div);
   }
 }
-load();
-
-// ── Chaînes YouTube modèles (inspiration_urls, partagé avec Paramètres) ──
+// ── Vidéos références (inspiration_urls) de la chaîne sélectionnée ──
 const chanMsg = document.getElementById('chan-msg');
-async function loadChannels() {
+async function loadVideoRefs() {
   try {
-    const s = await (await fetch('/api/settings')).json();
-    const urls = (s.strategy && s.strategy.inspiration_urls) || [];
-    document.getElementById('inspiration_urls').value = urls.join('\n');
+    const d = await (await fetch('/api/references/videos' + (channelId ? '?channel_id=' + channelId : ''))).json();
+    document.getElementById('inspiration_urls').value = (d.inspiration_urls || []).join('\n');
   } catch (e) {}
 }
 document.getElementById('save-channels').onclick = async () => {
-  const btn = document.getElementById('save-channels');
-  btn.disabled = true; chanMsg.className = 'form-msg'; chanMsg.textContent = 'Enregistrement…';
+  const b = document.getElementById('save-channels');
+  b.disabled = true; chanMsg.className = 'form-msg'; chanMsg.textContent = 'Enregistrement…';
   const urls = document.getElementById('inspiration_urls').value.split('\n').map(x => x.trim()).filter(Boolean);
   try {
-    const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inspiration_urls: urls }) })).json();
+    const d = await (await fetch('/api/references/videos', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel_id: channelId, inspiration_urls: urls }) })).json();
     chanMsg.textContent = d.ok ? 'Enregistré ✓' : ('Erreur : ' + (d.error || ''));
     if (!d.ok) chanMsg.className = 'form-msg err';
   } catch (e) { chanMsg.className = 'form-msg err'; chanMsg.textContent = 'Erreur réseau'; }
-  btn.disabled = false;
+  b.disabled = false;
 };
-loadChannels();
+
+(async () => { await initChannelSelector(); await load(); await loadVideoRefs(); })();
 </script>
 <script src="/theme.js"></script>
 </body>
