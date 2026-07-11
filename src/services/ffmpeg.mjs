@@ -79,17 +79,19 @@ function wrapLines(text, maxChars) {
 
 // Génère une miniature 1280x720 depuis une image fournie.
 // withText=true -> écrit le titre centré (police au choix) ; withText=false -> image seule.
-export function renderThumbnail({ imagePath, title, outPath, workDir, font = 'playfair', withText = true, overlay = 0.22, log = () => {} }) {
+export function renderThumbnail({ imagePath, title, text, outPath, workDir, font = 'playfair', withText = true, overlay = 0.22, posX = 0.5, posY = 0.5, log = () => {} }) {
   const parts = ['scale=1280:720:force_original_aspect_ratio=increase', 'crop=1280:720'];
   let nLines = 0;
   if (withText) {
-    const text = stripPlaylistTag(title) || 'Playlist';
-    const lines = wrapLines(text, 22); nLines = lines.length;
+    const raw = (text != null ? String(text) : stripPlaylistTag(title)) || 'Playlist';
+    const lines = wrapLines(raw, 22); nLines = lines.length;
     const txtFile = join(workDir, 'thumb-text.txt');
     writeFileSync(txtFile, lines.join('\n'), 'utf8');
     const fontsize = lines.length >= 3 ? 50 : (lines.length === 2 ? 60 : 66);
+    // Position (centre du bloc de texte) en fractions [0..1], bornée pour rester dans l'image.
+    const cx = Math.min(0.98, Math.max(0.02, posX)), cy = Math.min(0.98, Math.max(0.02, posY));
     parts.push(`drawbox=x=0:y=0:w=1280:h=720:color=black@${overlay}:t=fill`);
-    parts.push(`drawtext=fontfile='${escFilter(fontPathFor(font))}':textfile='${escFilter(txtFile)}':fontcolor=white:fontsize=${fontsize}:line_spacing=14:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black@0.65:shadowx=2:shadowy=2`);
+    parts.push(`drawtext=fontfile='${escFilter(fontPathFor(font))}':textfile='${escFilter(txtFile)}':fontcolor=white:fontsize=${fontsize}:line_spacing=14:x=(w*${cx}-text_w/2):y=(h*${cy}-text_h/2):shadowcolor=black@0.65:shadowx=2:shadowy=2`);
   }
   execFileSync(FF, ['-y', '-i', imagePath, '-vf', parts.join(','), '-frames:v', '1', '-q:v', '3', outPath], { stdio: 'ignore' });
   log(withText ? `miniature générée (${nLines} ligne(s), police ${font})` : 'miniature générée (image seule)');

@@ -73,6 +73,15 @@
   .err { color: #b3413a; }
   .btn-cancel { color: #b3413a; }
   .btn-cancel:hover { border-color: #b3413a; background: #fbf2f1; }
+  @font-face { font-family: 'tf-playfair'; src: url('/fonts/playfair.ttf'); font-display: swap; }
+  @font-face { font-family: 'tf-inter'; src: url('/fonts/inter.ttf'); font-display: swap; }
+  @font-face { font-family: 'tf-cormorant'; src: url('/fonts/cormorant.ttf'); font-display: swap; }
+  .thumb-editor { margin-bottom: 16px; }
+  .thumb-canvas { width: 100%; max-width: 460px; aspect-ratio: 16/9; border-radius: 8px; display: block; cursor: move; border: 1px solid var(--color-rule2); background: var(--color-soft2); }
+  .thumb-ctrls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; max-width: 460px; }
+  .thumb-ctrls .thumb-text { flex: 1; min-width: 160px; padding: 8px 10px; background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; font-size: 13px; color: var(--color-ink); font-family: var(--font-sans); }
+  .thumb-ctrls select { padding: 8px 10px; background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; font-size: 12.5px; color: var(--color-ink); font-family: var(--font-sans); }
+  .thumb-msg { font-size: 12px; color: var(--color-mut); }
 </style>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/theme.css">
@@ -223,6 +232,20 @@ async function load() {
         ${v.status === 'failed' ? '<div class="field err">Erreur : ' + (v.error || 'inconnue') + '</div>' : ''}
         ${embed}
         ${ytLink ? '<div style="margin-bottom:14px">' + ytLink + '</div>' : ''}
+        ${v.youtube_video_id ? `<div class="thumb-editor" id="thumb_${v.id}">
+          <label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--color-mut);margin-bottom:6px">Miniature — glisse le texte pour le déplacer</label>
+          <canvas class="thumb-canvas" width="1280" height="720"></canvas>
+          <div class="thumb-ctrls">
+            <input class="thumb-text" placeholder="Texte de la miniature">
+            <select class="thumb-font">
+              <option value="playfair">Playfair Display</option>
+              <option value="cormorant">Cormorant Garamond</option>
+              <option value="inter">Inter</option>
+            </select>
+            <button class="btn-sec thumb-save" type="button">Enregistrer la miniature</button>
+            <span class="thumb-msg"></span>
+          </div>
+        </div>` : ''}
         <div class="field"><label>Titre</label><input id="t_${v.id}" value="${(v.title || '').replace(/"/g, '&quot;')}"></div>
         <div class="field"><label>Description</label><textarea id="d_${v.id}">${v.description || ''}</textarea></div>
         <div class="actions">
@@ -241,7 +264,64 @@ async function load() {
     if (q('.reject')) q('.reject').onclick = () => act('/api/videos/reject', v.id);
     if (q('.del')) q('.del').onclick = () => act('/api/videos/delete', v.id, 'Supprimer cette vidéo (et la retirer de YouTube si elle y est) ?');
     list.appendChild(div);
+    if (open && v.youtube_video_id) initThumbEditor(v.id, div);
   }
+}
+
+// ── Éditeur de miniature (aperçu canvas + texte/police/position + ré-upload) ──
+const FONT_FAM = { playfair: 'tf-playfair', inter: 'tf-inter', cormorant: 'tf-cormorant' };
+function wrapThumb(t, max) {
+  const words = String(t).split(/\s+/).filter(Boolean); const lines = []; let cur = '';
+  for (const w of words) { if (!cur) cur = w; else if ((cur + ' ' + w).length <= max) cur += ' ' + w; else { lines.push(cur); cur = w; } }
+  if (cur) lines.push(cur); return lines;
+}
+async function initThumbEditor(vid, container) {
+  const box = container.querySelector('.thumb-editor'); if (!box || box.dataset.init) return;
+  box.dataset.init = '1';
+  const canvas = box.querySelector('.thumb-canvas'), textIn = box.querySelector('.thumb-text');
+  const fontSel = box.querySelector('.thumb-font'), saveBtn = box.querySelector('.thumb-save'), msg = box.querySelector('.thumb-msg');
+  let d; try { d = await (await fetch('/api/videos/thumbnail?id=' + vid)).json(); } catch (e) { return; }
+  if (!d || !d.ok) return;
+  if (!d.imageUrl) { box.innerHTML = '<div style="font-size:12px;color:var(--color-mut2)">Pas d\'image de fond pour cette vidéo — miniature non éditable.</div>'; return; }
+  const st = { text: d.text || '', font: d.font || 'playfair', posX: d.posX ?? 0.5, posY: d.posY ?? 0.5, img: null };
+  textIn.value = st.text; fontSel.value = st.font;
+  try { await Promise.all(['playfair', 'inter', 'cormorant'].map(f => document.fonts.load(`60px ${FONT_FAM[f]}`))); } catch (e) {}
+  const img = new Image();
+  img.onload = () => { st.img = img; draw(); };
+  img.onerror = draw;
+  img.src = d.imageUrl;
+  function draw() {
+    const ctx = canvas.getContext('2d'), W = 1280, H = 720;
+    ctx.clearRect(0, 0, W, H);
+    if (st.img) { const s = Math.max(W / st.img.width, H / st.img.height), iw = st.img.width * s, ih = st.img.height * s; ctx.drawImage(st.img, (W - iw) / 2, (H - ih) / 2, iw, ih); }
+    else { ctx.fillStyle = '#222'; ctx.fillRect(0, 0, W, H); }
+    if (st.text.trim()) {
+      ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(0, 0, W, H);
+      const lines = wrapThumb(st.text.trim(), 22);
+      const fs = lines.length >= 3 ? 50 : (lines.length === 2 ? 60 : 66);
+      ctx.font = `${fs}px ${FONT_FAM[st.font] || 'tf-playfair'}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.65)'; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 2; ctx.fillStyle = '#fff';
+      const lh = fs + 14, startY = st.posY * H - (lines.length * lh) / 2 + lh / 2;
+      lines.forEach((ln, i) => ctx.fillText(ln, st.posX * W, startY + i * lh));
+      ctx.shadowColor = 'transparent';
+    }
+  }
+  let drag = false;
+  const setPos = e => { const r = canvas.getBoundingClientRect(); st.posX = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); st.posY = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)); draw(); };
+  canvas.addEventListener('mousedown', e => { drag = true; setPos(e); e.preventDefault(); });
+  window.addEventListener('mousemove', e => { if (drag) setPos(e); });
+  window.addEventListener('mouseup', () => drag = false);
+  textIn.oninput = () => { st.text = textIn.value; draw(); };
+  fontSel.onchange = () => { st.font = fontSel.value; draw(); };
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true; msg.textContent = 'Envoi sur YouTube…';
+    try {
+      const r = await (await fetch('/api/videos/thumbnail', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: vid, text: st.text, font: st.font, posX: st.posX, posY: st.posY }) })).json();
+      msg.textContent = r.ok ? 'Miniature mise à jour ✓ (peut prendre 1 min sur YouTube)' : ('Erreur : ' + (r.error || ''));
+    } catch (e) { msg.textContent = 'Erreur réseau'; }
+    saveBtn.disabled = false;
+  };
 }
 load();
 // Au chargement : reprend le direct uniquement si une génération est en cours (évite d'afficher un vieux journal).

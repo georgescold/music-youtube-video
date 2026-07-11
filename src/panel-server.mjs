@@ -8,7 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, storageDelete } from './services/supabase.mjs';
 import { runPipeline } from './pipeline.mjs';
-import { setPrivacyStatus, deleteVideo, getMyChannel } from './services/youtube.mjs';
+import { setPrivacyStatus, deleteVideo, getMyChannel, setThumbnail } from './services/youtube.mjs';
+import { renderThumbnail, stripPlaylistTag, THUMB_FONTS } from './services/ffmpeg.mjs';
+import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
 import { listChannels, getActiveChannel, getChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView, propagateSharedCreds } from './services/channels.mjs';
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
@@ -260,6 +263,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/favicon.svg') {
       return readFile(join(__dirname, 'favicon.svg')).then(b => send(res, 200, 'image/svg+xml; charset=utf-8', b)).catch(() => send(res, 404, 'text/plain', ''));
     }
+    if (req.method === 'GET' && /^\/fonts\/(playfair|inter|cormorant)\.ttf$/.test(path)) {
+      const key = path.match(/^\/fonts\/(\w+)\.ttf$/)[1];
+      return readFile(join(__dirname, 'assets', 'fonts', THUMB_FONTS[key])).then(b => send(res, 200, 'font/ttf', b)).catch(() => send(res, 404, 'text/plain', ''));
+    }
     if (req.method === 'GET' && path === '/theme.css') {
       return readFile(join(__dirname, 'theme.css')).then(b => send(res, 200, 'text/css; charset=utf-8', b)).catch(() => send(res, 404, 'text/plain', ''));
     }
@@ -467,6 +474,57 @@ const server = http.createServer(async (req, res) => {
         await dbPatch('videos', `id=eq.${b.id}`, { status: 'published', published_at: new Date().toISOString() });
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+    }
+    // Données pour l'éditeur de miniature (image de fond + réglages courants).
+    if (req.method === 'GET' && path === '/api/videos/thumbnail') {
+      const id = q.get('id');
+      const [v] = await dbSelect('videos', `?id=eq.${id}`);
+      if (!v) return json(res, { ok: false, error: 'vidéo introuvable' });
+      const ch = v.channel_id ? await getChannel(v.channel_id) : await getActiveChannel();
+      const ids = Array.isArray(v.background_asset_ids) && v.background_asset_ids.length ? v.background_asset_ids : (v.background_asset ? [v.background_asset] : []);
+      let imageUrl = null;
+      if (ids.length) {
+        const rows = await dbSelect('assets', `?id=in.(${ids.join(',')})`).catch(() => []);
+        const img = rows.find(a => /^image\//.test(a.mime_type || ''));
+        if (img) imageUrl = await storageSign('assets', img.storage_path, 3600).catch(() => null);
+      }
+      const cfg = v.thumbnail_config || {};
+      return json(res, {
+        ok: true, imageUrl, hasYoutube: !!v.youtube_video_id,
+        text: cfg.text != null ? cfg.text : stripPlaylistTag(v.title || ''),
+        font: cfg.font || ch?.thumbnail_font || 'playfair',
+        posX: cfg.posX ?? 0.5, posY: cfg.posY ?? 0.5,
+        fonts: Object.keys(THUMB_FONTS)
+      });
+    }
+    // Régénère la miniature (texte/police/position) et la ré-uploade sur YouTube.
+    if (req.method === 'POST' && path === '/api/videos/thumbnail') {
+      const b = await readJsonBody(req);
+      const [v] = await dbSelect('videos', `?id=eq.${b.id}`);
+      if (!v) return json(res, { ok: false, error: 'vidéo introuvable' });
+      if (!v.youtube_video_id) return json(res, { ok: false, error: 'vidéo pas encore sur YouTube' });
+      const ch = v.channel_id ? await getChannel(v.channel_id) : await getActiveChannel();
+      const ids = Array.isArray(v.background_asset_ids) && v.background_asset_ids.length ? v.background_asset_ids : (v.background_asset ? [v.background_asset] : []);
+      const rows = ids.length ? await dbSelect('assets', `?id=in.(${ids.join(',')})`).catch(() => []) : [];
+      const img = rows.find(a => /^image\//.test(a.mime_type || ''));
+      if (!img) return json(res, { ok: false, error: 'aucune image de fond pour cette vidéo' });
+      const workDir = join(tmpdir(), 'thumb-' + b.id);
+      mkdirSync(workDir, { recursive: true });
+      try {
+        const url = await storageSign('assets', img.storage_path, 600);
+        const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
+        const imgPath = join(workDir, 'bg.' + ((img.filename.split('.').pop() || 'jpg').toLowerCase()));
+        writeFileSync(imgPath, buf);
+        const outPath = join(workDir, 'thumb.jpg');
+        const font = ['playfair', 'inter', 'cormorant'].includes(b.font) ? b.font : (ch?.thumbnail_font || 'playfair');
+        const text = String(b.text || '').slice(0, 200);
+        const posX = Math.min(1, Math.max(0, Number(b.posX) || 0.5)), posY = Math.min(1, Math.max(0, Number(b.posY) || 0.5));
+        renderThumbnail({ imagePath: imgPath, text, outPath, workDir, font, withText: !!text.trim(), posX, posY });
+        await setThumbnail(v.youtube_video_id, outPath, channelCreds(ch || {}).youtube);
+        await dbPatch('videos', `id=eq.${b.id}`, { thumbnail_config: { text, font, posX, posY } });
+        return json(res, { ok: true });
+      } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+      finally { try { rmSync(workDir, { recursive: true, force: true }); } catch {} }
     }
     if (req.method === 'POST' && path === '/api/videos/reject') {
       const b = await readJsonBody(req);
