@@ -1,0 +1,33 @@
+name: Renouvellement du jeton Epidemic
+
+# Renouvelle automatiquement le jeton Epidemic depuis TA session (cookies stockés en secret), dans le cloud,
+# sans ordinateur allumé. Tourne chaque jour avant la génération + déclenchable à la main pour tester.
+on:
+  schedule:
+    - cron: '30 4 * * *' # 04:30 UTC quotidien (avant le CRON de génération)
+  workflow_dispatch: {}   # bouton "Run workflow" pour tester manuellement
+
+concurrency:
+  group: epidemic-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installer Playwright (Chromium)
+        run: |
+          npm install playwright --no-save
+          npx playwright install --with-deps chromium
+      - name: Récupérer et pousser un jeton Epidemic frais
+        env:
+          EPIDEMIC_COOKIES: ${{ secrets.EPIDEMIC_COOKIES }}
+          APP_URL: ${{ secrets.APP_URL }}
+          EPIDEMIC_REFRESH_SECRET: ${{ secrets.EPIDEMIC_REFRESH_SECRET }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: node scripts/epidemic-refresh.mjs

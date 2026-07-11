@@ -300,6 +300,25 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && path === '/api/auth/logout') { clearAuthCookie(res); return json(res, { ok: true }); }
 
+    // Renouvellement automatique du jeton Epidemic (poussé par le job planifié GitHub Actions).
+    // Protégé par un secret partagé (pas par le cookie de session) car appelé de machine à machine.
+    if (req.method === 'POST' && path === '/api/settings/epidemic-token') {
+      const secret = process.env.EPIDEMIC_REFRESH_SECRET;
+      if (!secret || req.headers['x-refresh-secret'] !== secret) return json(res, { ok: false, error: 'non autorisé' }, 401);
+      const b = await readJsonBody(req).catch(() => ({}));
+      const jwt = typeof b.jwt === 'string' ? b.jwt.trim() : '';
+      if (!jwt) return json(res, { ok: false, error: 'jwt manquant' });
+      // On valide le jeton AVANT de le stocker (ne jamais écraser un jeton qui marche par un jeton mort).
+      const test = await testEpidemic(jwt).catch(() => ({ ok: false, detail: 'test échoué' }));
+      if (!test.ok) return json(res, { ok: false, error: 'jeton fourni invalide : ' + (test.detail || '') });
+      await propagateSharedCreds({ epidemic_jwt: jwt }).catch(() => {}); // jeton partagé -> toutes les chaînes
+      // Reprise auto : nettoie les tentatives mortes faute d'Epidemic (le CRON régénérera avec le jeton frais).
+      const stuck = await dbSelect('videos', `?status=eq.failed&note=eq.epidemic_auth&select=id`).catch(() => []);
+      if (stuck.length) await dbDelete('videos', `status=eq.failed&note=eq.epidemic_auth`).catch(() => {});
+      console.log(`[epidemic-refresh] jeton mis à jour (${stuck.length} échec(s) nettoyé(s))`);
+      return json(res, { ok: true, cleaned: stuck.length });
+    }
+
     if (!authOk(req)) {
       if ((req.headers.accept || '').includes('text/html')) { res.writeHead(302, { location: loadUsers().length ? '/login' : '/signup' }); return res.end(); }
       return json(res, { error: 'Non authentifié' }, 401);
