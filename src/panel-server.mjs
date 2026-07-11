@@ -306,16 +306,20 @@ const server = http.createServer(async (req, res) => {
       const secret = process.env.EPIDEMIC_REFRESH_SECRET;
       if (!secret || req.headers['x-refresh-secret'] !== secret) return json(res, { ok: false, error: 'non autorisé' }, 401);
       const b = await readJsonBody(req).catch(() => ({}));
+      // Auth de session par COOKIES (méthode robuste, poussée par le job GitHub) ; le JWT reste accepté en secours.
+      const cookies = typeof b.cookies === 'string' ? b.cookies.trim() : (Array.isArray(b.cookies) ? JSON.stringify(b.cookies) : '');
       const jwt = typeof b.jwt === 'string' ? b.jwt.trim() : '';
-      if (!jwt) return json(res, { ok: false, error: 'jwt manquant' });
-      // On valide le jeton AVANT de le stocker (ne jamais écraser un jeton qui marche par un jeton mort).
-      const test = await testEpidemic(jwt).catch(() => ({ ok: false, detail: 'test échoué' }));
-      if (!test.ok) return json(res, { ok: false, error: 'jeton fourni invalide : ' + (test.detail || '') });
-      await propagateSharedCreds({ epidemic_jwt: jwt }).catch(() => {}); // jeton partagé -> toutes les chaînes
-      // Reprise auto : nettoie les tentatives mortes faute d'Epidemic (le CRON régénérera avec le jeton frais).
+      if (!cookies && !jwt) return json(res, { ok: false, error: 'cookies ou jwt requis' });
+      // On valide AVANT de stocker (ne jamais écraser une session qui marche par une morte).
+      const auth = cookies ? { cookies } : { jwt };
+      const test = await testEpidemic(auth).catch(() => ({ ok: false, detail: 'test échoué' }));
+      if (!test.ok) return json(res, { ok: false, error: 'auth Epidemic fournie invalide : ' + (test.detail || '') });
+      const patch = cookies ? { epidemic_cookies: cookies } : { epidemic_jwt: jwt };
+      await propagateSharedCreds(patch).catch(() => {}); // partagé -> toutes les chaînes
+      // Reprise auto : nettoie les tentatives mortes faute d'Epidemic (le CRON régénérera avec la session fraîche).
       const stuck = await dbSelect('videos', `?status=eq.failed&note=eq.epidemic_auth&select=id`).catch(() => []);
       if (stuck.length) await dbDelete('videos', `status=eq.failed&note=eq.epidemic_auth`).catch(() => {});
-      console.log(`[epidemic-refresh] jeton mis à jour (${stuck.length} échec(s) nettoyé(s))`);
+      console.log(`[epidemic-refresh] ${cookies ? 'cookies' : 'jwt'} mis à jour (${stuck.length} échec(s) nettoyé(s))`);
       return json(res, { ok: true, cleaned: stuck.length });
     }
 
@@ -467,7 +471,7 @@ const server = http.createServer(async (req, res) => {
       // Pré-check Epidemic : le jeton meurt régulièrement (session fermée). On vérifie AVANT de lancer un run
       // pour ne pas gâcher une génération et afficher un message clair (au lieu de « curation vide »).
       const preCh = await getActiveChannel();
-      const preEp = await testEpidemic(channelCreds(preCh).epidemicJwt).catch(() => ({ ok: false }));
+      const preEp = await testEpidemic({ jwt: channelCreds(preCh).epidemicJwt, cookies: channelCreds(preCh).epidemicCookies }).catch(() => ({ ok: false }));
       if (!preEp.ok) {
         if (preCh?.discord_webhook) sendDiscord(preCh.discord_webhook, { title: '🔑 Epidemic déconnecté', description: EPIDEMIC_AUTH_MESSAGE, color: COLORS.error }).catch(() => {});
         return json(res, { ok: false, error: EPIDEMIC_AUTH_MESSAGE });
@@ -648,7 +652,7 @@ const server = http.createServer(async (req, res) => {
       // on nettoie ces tentatives mortes et on relance une génération automatiquement.
       let resumed = false;
       if (patch.epidemic_jwt) {
-        const ep = await testEpidemic(channelCreds(updated).epidemicJwt).catch(() => ({ ok: false }));
+        const ep = await testEpidemic({ jwt: channelCreds(updated).epidemicJwt, cookies: channelCreds(updated).epidemicCookies }).catch(() => ({ ok: false }));
         if (ep.ok) {
           const stuck = await dbSelect('videos', `?channel_id=eq.${ch.id}&status=eq.failed&note=eq.epidemic_auth&select=id`).catch(() => []);
           if (stuck.length) {
@@ -728,7 +732,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && (path === '/api/test/youtube' || path === '/api/test/epidemic' || path === '/api/test/claude')) {
       const creds = channelCreds(await getActiveChannel());
       if (path.endsWith('youtube')) return json(res, await testYouTube(creds.youtube || {}));
-      if (path.endsWith('epidemic')) return json(res, await testEpidemic(creds.epidemicJwt));
+      if (path.endsWith('epidemic')) return json(res, await testEpidemic({ jwt: creds.epidemicJwt, cookies: creds.epidemicCookies }));
       return json(res, await testClaude(creds.claudeToken));
     }
 

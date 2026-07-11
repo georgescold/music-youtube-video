@@ -5,7 +5,7 @@ import { encrypt, decrypt, mask } from './crypto.mjs';
 const SENSITIVE = ['yt_client_secret', 'yt_refresh_token', 'epidemic_jwt', 'claude_token'];
 // Identifiants PARTAGÉS entre toutes les chaînes d'un même compte (mêmes accès Epidemic/Claude + même app OAuth Google).
 // Le refresh token YouTube et l'ID de chaîne restent, eux, propres à chaque chaîne.
-export const SHARED_ACCOUNT = ['epidemic_jwt', 'claude_token', 'yt_client_id', 'yt_client_secret'];
+export const SHARED_ACCOUNT = ['epidemic_jwt', 'epidemic_cookies', 'claude_token', 'yt_client_id', 'yt_client_secret'];
 
 export async function listChannels() {
   return dbSelect('channels', '?order=created_at.asc');
@@ -61,6 +61,7 @@ export function channelCreds(ch) {
   return {
     youtube: { clientId: ch.yt_client_id, clientSecret: decrypt(ch.yt_client_secret), refreshToken: decrypt(ch.yt_refresh_token), channelId: ch.yt_channel_id },
     epidemicJwt: decrypt(ch.epidemic_jwt),
+    epidemicCookies: decrypt(ch.epidemic_cookies), // auth de session MCP (priment sur le JWT)
     claudeToken: decrypt(ch.claude_token)
   };
 }

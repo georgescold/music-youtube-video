@@ -1,134 +1,91 @@
-// Renouvellement AUTOMATIQUE du jeton Epidemic — tourne dans le cloud (GitHub Actions), sans ordinateur allumé.
+// Renouvellement AUTOMATIQUE de la session Epidemic — cloud (GitHub Actions), sans ordinateur allumé.
 //
-// Principe : Epidemic interdit tout refresh serveur (refresh_token/password/DCR = unauthorized_client). Le jeton
-// ne peut naître que dans un navigateur connecté. Ce script rejoue TA SESSION (cookies stockés en secret GitHub)
-// dans un Chromium headless, laisse la page Epidemic s'authentifier silencieusement, capte le jeton frais dans
-// une requête réseau, et le pousse dans l'app via /api/settings/epidemic-token (protégé par secret partagé).
+// Le MCP Epidemic s'authentifie par COOKIES de session (prouvé : search + download fonctionnent depuis un
+// simple serveur avec l'en-tête Cookie). Ce job rejoue TA SESSION (cookies en secret GitHub) dans un Chromium
+// headless, visite le site — ce qui RAFRAÎCHIT/prolonge la session (Set-Cookie, ré-auth SSO silencieuse) —
+// puis récupère les cookies frais et les pousse dans l'app via /api/settings/epidemic-token.
 //
-// Limite : les cookies de session expirent aussi (quelques semaines/mois). Quand ça arrive, le job échoue ->
-// il faut ré-extraire les cookies une fois depuis un nouveau login. C'est la seule intervention manuelle restante.
+// La session SSO Keycloak (KEYCLOAK_SESSION) est longue (≈ jusqu'en 2027) : tant qu'elle vit, le job renouvelle
+// tout seul les cookies de l'app. Intervention manuelle uniquement si la session SSO meurt (déconnexion) ->
+// ré-extraire les cookies une fois.
 //
-// Env attendues :
-//   EPIDEMIC_COOKIES        JSON (array de cookies exportés du navigateur, format Playwright ou extension "cookies")
-//   APP_URL                 base de l'app (ex : https://music-youtube-video-production.up.railway.app)
-//   EPIDEMIC_REFRESH_SECRET secret partagé identique à celui configuré sur l'app (Railway)
-//   DISCORD_WEBHOOK         (optionnel) pour alerter en cas d'échec (session morte -> re-login requis)
+// Env :
+//   EPIDEMIC_COOKIES        cookies exportés (Netscape "Get cookies.txt LOCALLY", ou JSON) — les DEUX domaines
+//                           (www.epidemicsound.com ET login.epidemicsound.com)
+//   APP_URL                 base de l'app (ex : https://…railway.app)
+//   EPIDEMIC_REFRESH_SECRET secret partagé identique à celui de l'app
+//   DISCORD_WEBHOOK         (optionnel) alerte si la session est morte
 import { chromium } from 'playwright';
 
 const { EPIDEMIC_COOKIES, APP_URL, EPIDEMIC_REFRESH_SECRET, DISCORD_WEBHOOK } = process.env;
-
-function fail(msg) { console.error('❌ ' + msg); return msg; }
-
+function fail(m) { console.error('❌ ' + m); return m; }
 async function notify(msg) {
   if (!DISCORD_WEBHOOK) return;
-  try {
-    await fetch(DISCORD_WEBHOOK, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [{ title: '🔑 Renouvellement Epidemic échoué', description: msg.slice(0, 1500) + '\n\nRé-extrais tes cookies Epidemic et mets à jour le secret GitHub `EPIDEMIC_COOKIES`.', color: 0xE23D3D }] })
-    });
-  } catch {}
+  try { await fetch(DISCORD_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [{ title: '🔑 Renouvellement Epidemic échoué', description: msg.slice(0, 1500) + '\n\nRé-exporte tes cookies Epidemic (les 2 domaines) et mets à jour le secret GitHub `EPIDEMIC_COOKIES`.', color: 0xE23D3D }] }) }); } catch {}
 }
 
-// Parse le format Netscape cookies.txt (export de "Get cookies.txt LOCALLY"). Les lignes httpOnly sont
-// préfixées "#HttpOnly_". On peut concaténer plusieurs fichiers (les commentaires "#" sont ignorés).
-function parseNetscape(text) {
+// Accepte Netscape cookies.txt OU JSON array -> cookies Playwright.
+function loadCookies(raw) {
+  const t = raw.trim();
+  const ss = v => (['Strict', 'Lax', 'None'].includes(v) ? v : v === 'no_restriction' ? 'None' : v === 'lax' ? 'Lax' : v === 'strict' ? 'Strict' : 'Lax');
+  if (t.startsWith('[') || t.startsWith('{')) {
+    const arr = JSON.parse(t); const list = Array.isArray(arr) ? arr : (arr.cookies || []);
+    return list.map(c => { const o = { name: c.name, value: c.value, domain: c.domain, path: c.path || '/', httpOnly: !!c.httpOnly, secure: c.secure !== false, sameSite: ss(c.sameSite) }; const e = c.expires ?? c.expirationDate; if (typeof e === 'number' && e > 0) o.expires = Math.floor(e); return o; });
+  }
   const out = [];
-  for (const lineRaw of text.split(/\r?\n/)) {
+  for (const lineRaw of t.split(/\r?\n/)) {
     let line = lineRaw, httpOnly = false;
     if (line.startsWith('#HttpOnly_')) { httpOnly = true; line = line.slice(10); }
     else if (line.startsWith('#') || !line.trim()) continue;
-    const f = line.split('\t');
-    if (f.length < 7) continue;
-    const [domain, , path, secure, expiry, name, ...rest] = f;
-    out.push({ name, value: rest.join('\t'), domain, path: path || '/', secure: secure === 'TRUE', httpOnly, expires: Number(expiry) || undefined });
+    const f = line.split('\t'); if (f.length < 7) continue;
+    const o = { name: f[5], value: f.slice(6).join('\t'), domain: f[0], path: f[2] || '/', secure: f[3] === 'TRUE', httpOnly, sameSite: 'Lax' };
+    const e = Number(f[4]); if (e > 0) o.expires = e;
+    out.push(o);
   }
   return out;
 }
-
-// Normalise les cookies pour Playwright. Accepte : JSON (array Cookie-Editor/EditThisCookie/DevTools) OU
-// Netscape cookies.txt. Peu importe l'outil d'export utilisé.
-function normalizeCookies(raw) {
-  const trimmed = raw.trim();
-  let arr;
-  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-    const parsed = JSON.parse(trimmed);
-    arr = Array.isArray(parsed) ? parsed : (parsed.cookies || []);
-  } else {
-    arr = parseNetscape(trimmed);
-  }
-  const ss = v => (['Strict', 'Lax', 'None'].includes(v) ? v : (v === 'no_restriction' ? 'None' : v === 'lax' ? 'Lax' : v === 'strict' ? 'Strict' : 'Lax'));
-  return arr.map(c => {
-    const out = { name: c.name, value: c.value, domain: c.domain, path: c.path || '/', httpOnly: !!c.httpOnly, secure: c.secure !== false, sameSite: ss(c.sameSite) };
-    if (typeof c.expirationDate === 'number') out.expires = Math.floor(c.expirationDate);
-    else if (typeof c.expires === 'number' && c.expires > 0) out.expires = Math.floor(c.expires);
-    if (!out.domain) throw new Error('cookie sans domain : ' + c.name);
-    return out;
-  });
-}
-
-// Un JWT Epidemic ressemble à eyJ....eyJ....sig (3 segments base64url). On garde le plus long capté.
-function looksLikeJwt(t) { return /^eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+$/.test(t || ''); }
 
 async function main() {
   if (!EPIDEMIC_COOKIES) return fail('EPIDEMIC_COOKIES manquant');
   if (!APP_URL) return fail('APP_URL manquant');
   if (!EPIDEMIC_REFRESH_SECRET) return fail('EPIDEMIC_REFRESH_SECRET manquant');
 
-  let cookies;
-  try { cookies = normalizeCookies(EPIDEMIC_COOKIES); }
-  catch (e) { return fail('cookies illisibles : ' + e.message); }
-  console.log(`cookies chargés : ${cookies.length}`);
+  let seed;
+  try { seed = loadCookies(EPIDEMIC_COOKIES); } catch (e) { return fail('cookies illisibles : ' + e.message); }
+  console.log('cookies chargés :', seed.length);
 
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-    locale: 'fr-FR'
-  });
-  await context.addCookies(cookies);
-
-  const tokens = new Set();
-  const grab = h => {
-    const auth = h?.authorization || h?.Authorization;
-    if (auth && /^Bearer\s+eyJ/.test(auth)) { const t = auth.replace(/^Bearer\s+/, '').trim(); if (looksLikeJwt(t)) tokens.add(t); }
-  };
-  context.on('request', r => grab(r.headers()));
-
+  const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36', locale: 'fr-FR' });
+  await context.addCookies(seed);
   const page = await context.newPage();
   try {
-    // La home authentifiée déclenche des appels API portant le Bearer. On visite aussi la bibliothèque musicale
-    // pour forcer des requêtes catalogue si la home n'en émet pas assez.
-    await page.goto('https://www.epidemicsound.com/music/search/', { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-    await page.waitForTimeout(6000);
-    if (![...tokens].some(looksLikeJwt)) {
-      await page.goto('https://www.epidemicsound.com/', { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
-      await page.waitForTimeout(5000);
-    }
-    // Dernier recours : lire un éventuel jeton stocké côté page.
-    if (![...tokens].size) {
-      const fromStore = await page.evaluate(() => {
-        const hunt = s => { for (let i = 0; i < s.length; i++) { const v = s.getItem(s.key(i)); const m = (v || '').match(/eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+/); if (m) return m[0]; } return null; };
-        try { return hunt(localStorage) || hunt(sessionStorage); } catch { return null; }
-      }).catch(() => null);
-      if (fromStore) tokens.add(fromStore);
-    }
+    // Visiter le site connecté rafraîchit la session (Set-Cookie) et, si besoin, ré-authentifie via le SSO.
+    await page.goto('https://www.epidemicsound.com/music/featured/', { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+    await page.waitForTimeout(4000);
+    // Un appel MCP force le serveur à (re)valider la session et à poser les cookies d'affinité à jour.
+    await page.evaluate(async () => {
+      try { await fetch('https://www.epidemicsound.com/a/mcp-service/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'refresh', version: '1' } } }) }); } catch {}
+    }).catch(() => {});
+    await page.waitForTimeout(1500);
   } finally {
+    var fresh = await context.cookies().catch(() => []);
     await browser.close();
   }
 
-  // On garde le jeton avec l'exp la plus lointaine (le plus frais).
-  const expOf = t => { try { return JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()).exp || 0; } catch { return 0; } };
-  const best = [...tokens].filter(looksLikeJwt).sort((a, b) => expOf(b) - expOf(a))[0];
-  if (!best) { const m = fail('aucun jeton capté — session probablement expirée (re-login requis)'); await notify(m); process.exit(1); }
-  console.log(`jeton capté (exp ${new Date(expOf(best) * 1000).toISOString()})`);
+  // On ne garde que les cookies Epidemic (www + login), c'est ce que l'app réinjecte et envoie au MCP.
+  const keep = fresh.filter(c => String(c.domain).includes('epidemicsound.com'))
+    .map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite, expires: c.expires }));
+  const hasSession = keep.some(c => /session/i.test(c.name));
+  if (!keep.length || !hasSession) { const m = fail(`cookies de session absents après visite (session probablement expirée). gardés=${keep.length}`); await notify(m); process.exit(1); }
+  console.log(`cookies frais : ${keep.length} (dont session)`);
 
-  // Pousse le jeton frais dans l'app (qui le valide, le propage à toutes les chaînes et relance les échecs).
   const res = await fetch(APP_URL.replace(/\/$/, '') + '/api/settings/epidemic-token', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-refresh-secret': EPIDEMIC_REFRESH_SECRET },
-    body: JSON.stringify({ jwt: best })
+    body: JSON.stringify({ cookies: keep })
   });
   const body = await res.text();
-  if (!res.ok) { const m = fail(`l'app a refusé le jeton : HTTP ${res.status} ${body.slice(0, 200)}`); await notify(m); process.exit(1); }
-  console.log('✅ jeton Epidemic mis à jour dans l\'app : ' + body.slice(0, 200));
+  if (!res.ok) { const m = fail(`l'app a refusé les cookies : HTTP ${res.status} ${body.slice(0, 200)}`); await notify(m); process.exit(1); }
+  console.log('✅ session Epidemic renouvelée dans l\'app : ' + body.slice(0, 200));
 }
 
 main().catch(async e => { const m = fail('erreur inattendue : ' + (e?.message || e)); await notify(m); process.exit(1); });

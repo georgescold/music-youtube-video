@@ -14,9 +14,10 @@ export async function testYouTube(creds) {
   } catch (e) { return { ok: false, detail: String(e.message || e).slice(0, 200) }; }
 }
 
-export async function testEpidemic(jwt, url) {
+// auth : chaîne JWT (rétro-compat) OU { jwt, cookies }. Teste réellement le catalogue.
+export async function testEpidemic(auth, url) {
   try {
-    const client = createEpidemicClient(jwt, url);
+    const client = createEpidemicClient(auth, url);
     const r = await client.callTool('SearchRecordings', { query: { term: 'love' }, first: 1 });
     const n = (r?.data?.recordings?.nodes || []).length;
     return { ok: n > 0, detail: n > 0 ? 'catalogue Epidemic accessible' : 'connecté mais aucun résultat renvoyé' };
