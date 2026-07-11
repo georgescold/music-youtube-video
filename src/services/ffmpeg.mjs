@@ -142,15 +142,26 @@ export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPa
   const bgVideo = backgrounds.find(b => b.isVideo);
   let bgLabel;
   if (bgImages.length) {
+    // MÉMOIRE : ouvrir N images en même temps (une entrée -loop chacune) épuise la RAM de Railway et fait
+    // planter l'encodeur (OOM) dès qu'il y a beaucoup d'images. On pré-normalise chaque image en ${width}x${height}
+    // (séquentiel = peu de RAM), puis on utilise le DÉMUXEUR concat qui lit les images UNE PAR UNE (RAM constante).
     const T = (D / bgImages.length).toFixed(3); // temps égal par image = équilibrage équitable
-    const segs = [];
+    const dir = dirname(outPath);
+    const normPaths = [];
     bgImages.forEach((p, i) => {
-      const inIdx = addInput(['-loop', '1', '-t', T, '-i', p]);
-      filters.push(scaleCropFps(`${inIdx}:v`, `b${i}`));
-      segs.push(`[b${i}]`);
+      if (controller?.cancelled) throw new Error('cancelled');
+      const np = join(dir, `bgn_${i}.jpg`);
+      execFileSync(FF, ['-y', '-i', p, '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1`, '-q:v', '3', np], { stdio: 'ignore' });
+      normPaths.push(np);
     });
-    if (segs.length === 1) bgLabel = 'b0';
-    else { filters.push(`${segs.join('')}concat=n=${segs.length}:v=1[bg]`); bgLabel = 'bg'; }
+    const listPath = join(dir, 'bg_list.txt');
+    const esc = s => String(s).replace(/'/g, "'\\''");
+    const lines = normPaths.map(p => `file '${esc(p)}'\nduration ${T}`);
+    lines.push(`file '${esc(normPaths[normPaths.length - 1])}'`); // dernière répétée : exigence du démuxeur concat
+    writeFileSync(listPath, lines.join('\n') + '\n');
+    const inIdx = addInput(['-f', 'concat', '-safe', '0', '-i', listPath]);
+    filters.push(`[${inIdx}:v]fps=${fps},setsar=1,format=yuv420p[bg]`); // images déjà en ${width}x${height}
+    bgLabel = 'bg';
   } else if (bgVideo) {
     const inIdx = addInput(['-stream_loop', '-1', '-t', String(D), '-i', bgVideo.path]);
     filters.push(scaleCropFps(`${inIdx}:v`, 'bg')); bgLabel = 'bg';
