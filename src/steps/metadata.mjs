@@ -37,7 +37,7 @@ function pickHashtags(plan, recentHashtags = [], count = 5) {
   return picked;
 }
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, seoPlan = null, recentHashtags = [], internalLinks = [], channelHandle = '', channelName = '', log = () => {} }) {
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, seoPlan = null, recentHashtags = [], internalLinks = [], channelHandle = '', channelName = '', titleOverride = '', log = () => {} }) {
   const pb = strategy.playbook || {};
   const plan = seoPlan || {};
   // Contexte SEO adaptatif : le domaine/ton vient de la chaîne (objectif + produit), pas d'un thème présupposé.
@@ -88,12 +88,19 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
 
   log('génération métadonnées via Claude…');
   let meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
-  // Anti-doublon : si le titre existe déjà, on régénère (jusqu'à 3 fois) en le mettant explicitement à éviter.
-  const extraAvoid = [];
-  for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) {
-    log(`titre déjà utilisé ("${meta.title}") — nouvelle génération…`);
-    extraAvoid.push(meta.title);
-    meta = extractJson(await askClaude(system, buildUser(extraAvoid), 'sonnet'));
+  const forcedTitle = String(titleOverride || '').trim();
+  if (forcedTitle) {
+    // Titre imposé par l'utilisateur : on garde le reste (hook, mots-clés, hashtags, tags) mais on force le titre.
+    meta.title = /\[\s*playlist\s*\]/i.test(forcedTitle) ? forcedTitle : forcedTitle + ' [Playlist]';
+    log('titre imposé : ' + meta.title);
+  } else {
+    // Anti-doublon : si le titre existe déjà, on régénère (jusqu'à 3 fois) en le mettant explicitement à éviter.
+    const extraAvoid = [];
+    for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) {
+      log(`titre déjà utilisé ("${meta.title}") — nouvelle génération…`);
+      extraAvoid.push(meta.title);
+      meta = extractJson(await askClaude(system, buildUser(extraAvoid), 'sonnet'));
+    }
   }
 
   // Chapitres YouTube : 1re entrée forcée à 0:00 (règle YouTube), titres descriptifs -> +watch time, ranking multi-requêtes.

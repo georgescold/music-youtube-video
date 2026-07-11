@@ -34,6 +34,25 @@
   .page-sub { color: var(--color-mut); font-size: 13px; margin: 0 0 24px; }
   .btn-primary { background: var(--color-ink); color: var(--color-paper); border: 0; border-radius: 100px; padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
   .btn-primary:disabled { opacity: .5; cursor: default; }
+  .gen-opts { margin: -8px 0 18px; border: 1px solid var(--color-rule2); border-radius: 12px; background: var(--color-paper); overflow: hidden; }
+  .gen-opts summary { cursor: pointer; padding: 11px 14px; font-size: 13px; font-weight: 600; color: var(--color-ink); list-style: none; user-select: none; }
+  .gen-opts summary::-webkit-details-marker { display: none; }
+  .gen-opts summary::before { content: '▸'; display: inline-block; margin-right: 8px; color: var(--color-mut2); transition: transform .15s; }
+  .gen-opts[open] summary::before { transform: rotate(90deg); }
+  .opts-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 100px; background: var(--color-ink); color: var(--color-paper); font-size: 11px; font-weight: 600; }
+  .gen-opts-body { padding: 4px 14px 16px; border-top: 1px solid var(--color-rule2); }
+  .opt-row { margin-top: 14px; }
+  .opt-row label { display: block; font-size: 12px; font-weight: 600; color: var(--color-mut); margin-bottom: 6px; }
+  #opt-title { width: 100%; padding: 9px 11px; background: var(--color-bg); border: 1px solid var(--color-rule2); border-radius: 8px; font-size: 13.5px; color: var(--color-ink); font-family: var(--font-sans); }
+  .opt-hint { font-size: 11.5px; color: var(--color-mut2); margin: 8px 0 0; }
+  .thumb-pick { display: flex; gap: 10px; flex-wrap: wrap; }
+  .thumb-pick-empty { font-size: 12.5px; color: var(--color-mut2); }
+  .thumb-opt { position: relative; width: 112px; height: 63px; border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid transparent; background: var(--color-bg); }
+  .thumb-opt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb-opt.sel { border-color: var(--color-ink); }
+  .thumb-opt.sel::after { content: '✓'; position: absolute; top: 3px; right: 5px; color: #fff; font-weight: 700; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+  .thumb-auto { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--color-mut); }
+  .thumb-auto.sel { color: var(--color-ink); }
   .genbar { font-size: 12.5px; color: var(--color-mut); margin: -8px 0 24px; min-height: 1.2em; }
   .genbar.active { color: var(--color-ink); }
   .genbar .dot { display: inline-block; width: 7px; height: 7px; border-radius: 100px; background: var(--color-ink); margin-right: 7px; animation: pulse 1.2s ease-in-out infinite; }
@@ -119,6 +138,20 @@
       <button class="btn-primary" id="gen">Générer une vidéo</button>
     </div>
   </div>
+  <details class="gen-opts" id="genOpts">
+    <summary>Options : titre &amp; miniature <span class="opts-badge" id="optsBadge" style="display:none"></span></summary>
+    <div class="gen-opts-body">
+      <div class="opt-row">
+        <label for="opt-title">Titre (optionnel)</label>
+        <input id="opt-title" type="text" maxlength="200" placeholder="Laisse vide → titre généré automatiquement">
+      </div>
+      <div class="opt-row">
+        <label>Miniature (optionnel) — choisis une de tes images de fond</label>
+        <div class="thumb-pick" id="optThumbs"><span class="thumb-pick-empty">Aucune image de fond importée pour cette chaîne.</span></div>
+        <p class="opt-hint">L'image choisie devient la miniature <b>et</b> l'image principale de la vidéo (elle pilote aussi la musique). Vide → l'outil choisit.</p>
+      </div>
+    </div>
+  </details>
   <div class="genbar-row" style="display:flex;align-items:center;gap:14px;margin:-8px 0 24px;min-height:1.3em">
     <div class="genbar" id="genbar" style="margin:0"></div>
     <button class="btn-sec btn-cancel" id="cancel" style="display:none">Annuler</button>
@@ -153,9 +186,44 @@ let polling = false;
   } catch (e) {}
 })();
 
+// Options : sélecteur de miniature (images de fond de la chaîne active). null = auto.
+let selectedThumbId = null;
+const optThumbs = document.getElementById('optThumbs');
+const optTitle = document.getElementById('opt-title');
+const optsBadge = document.getElementById('optsBadge');
+function refreshOptsBadge() {
+  const n = (optTitle.value.trim() ? 1 : 0) + (selectedThumbId ? 1 : 0);
+  optsBadge.style.display = n ? '' : 'none';
+  optsBadge.textContent = n === 2 ? 'titre + miniature' : (optTitle.value.trim() ? 'titre' : (selectedThumbId ? 'miniature' : ''));
+}
+optTitle.addEventListener('input', refreshOptsBadge);
+(async () => {
+  try {
+    const assets = await (await fetch('/api/assets')).json();
+    const imgs = (Array.isArray(assets) ? assets : []).filter(a => a.kind === 'background' && /^image\//.test(a.mime_type || '') && a.url);
+    if (!imgs.length) return; // garde le message "aucune image"
+    optThumbs.innerHTML = '';
+    const auto = document.createElement('div');
+    auto.className = 'thumb-opt thumb-auto sel'; auto.textContent = 'Auto'; auto.title = 'Laisse l\'outil choisir';
+    optThumbs.appendChild(auto);
+    const opts = [auto];
+    const select = (el, id) => { selectedThumbId = id; opts.forEach(o => o.classList.remove('sel')); el.classList.add('sel'); refreshOptsBadge(); };
+    auto.onclick = () => select(auto, null);
+    for (const a of imgs) {
+      const el = document.createElement('div');
+      el.className = 'thumb-opt'; el.title = a.filename || '';
+      const im = document.createElement('img'); im.src = a.url; im.loading = 'lazy'; el.appendChild(im);
+      el.onclick = () => select(el, a.id);
+      optThumbs.appendChild(el); opts.push(el);
+    }
+  } catch (e) {}
+})();
+
 genBtn.onclick = async () => {
   genBtn.disabled = true;
   const body = { minMin: Number(document.getElementById('dmin').value), maxMin: Number(document.getElementById('dmax').value) };
+  if (optTitle.value.trim()) body.title = optTitle.value.trim();
+  if (selectedThumbId) body.backgroundAssetId = selectedThumbId;
   const d = await (await fetch('/api/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
   if (!d.ok) { genbar.className = 'genbar err'; genbar.textContent = d.error; genBtn.disabled = false; return; }
   startPolling();

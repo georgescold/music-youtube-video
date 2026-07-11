@@ -27,7 +27,7 @@ async function fetchAssetFile(asset, dir) {
   return { path, isVideo: (asset.mime_type || '').startsWith('video') };
 }
 
-export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, controller, log = () => {} } = {}) {
+export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, titleOverride = '', backgroundAssetId = null, controller, log = () => {} } = {}) {
   const ck = () => { if (controller?.cancelled) throw new Error('cancelled'); }; // point d'annulation entre étapes
   const channel = await getActiveChannel();
   const chanFilter = channel ? `&channel_id=eq.${channel.id}` : '';
@@ -71,6 +71,9 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
     const bgImageAssets = backgroundAssets.filter(a => !(a.mime_type || '').startsWith('video'));
     let chosenBgAssets = backgroundAssets;
     let bgWarning = null; // alerte "pas assez d'images" -> stockée sur la vidéo + Discord
+    // Image imposée par l'utilisateur (miniature = image principale = pilote l'émotion). Sinon sélection auto.
+    const forcedImg = backgroundAssetId ? bgImageAssets.find(a => a.id === backgroundAssetId) : null;
+    if (backgroundAssetId && !forcedImg) await logStep('background', 'warn', 'image de miniature choisie introuvable — sélection auto');
     if (bgImageAssets.length) {
       const sel = await selectBackgrounds({
         channelId: channel?.id, pool: bgImageAssets,
@@ -78,12 +81,17 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
         count: channel?.slideshow_count ?? 0,
         gap: channel?.reuse_gap ?? 30
       });
-      chosenBgAssets = [...bgVideoAssets, ...sel.chosen];
-      if (sel.warning) {
+      let chosen = sel.chosen;
+      if (forcedImg) {
+        // L'image choisie passe EN TÊTE (1re image => fond principal + base miniature + source d'émotion).
+        chosen = (channel?.background_mode === 'single') ? [forcedImg] : [forcedImg, ...chosen.filter(a => a.id !== forcedImg.id)];
+        await logStep('background', 'ok', 'miniature imposée : ' + (forcedImg.filename || forcedImg.id));
+      } else if (sel.warning) {
         bgWarning = sel.warning;
         await logStep('background', 'warn', sel.warning);
         if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '⚠️ Images de fond', description: sel.warning, color: COLORS.warn }).catch(() => {});
       }
+      chosenBgAssets = [...bgVideoAssets, ...chosen];
     }
     const backgrounds = [];
     for (const a of chosenBgAssets) backgrounds.push(await fetchAssetFile(a, workDir));
@@ -182,7 +190,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
     const meta = await generateMetadata({
       tracklist, mood, utmUrl, avoidTitles, strategy, emotion,
       seoPlan: channel?.seo_plan || null, recentHashtags, internalLinks,
-      channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', log
+      channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', titleOverride, log
     });
     await logStep('metadata', 'ok', meta.title);
 
