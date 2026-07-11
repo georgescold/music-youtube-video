@@ -111,13 +111,7 @@
 </div>
 <div class="wrap">
   <h1>Références</h1>
-  <p class="page-sub">Les références sont <b>propres à chaque chaîne</b>. Choisis la chaîne, puis ajoute ses <b>chansons</b> (style/mood) et ses <b>vidéos références</b> (codes de titres/miniatures). Elles nourrissent le playbook et la palette d'émotions.</p>
-
-  <div class="form-card" style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
-    <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--color-mut);margin:0">Chaîne</label>
-    <select id="ref-channel" style="min-width:220px;padding:9px 11px;background:var(--color-paper);border:1px solid var(--color-rule2);border-radius:8px;font-size:13.5px;color:var(--color-ink);font-family:var(--font-sans);cursor:pointer"></select>
-    <span style="font-size:12px;color:var(--color-mut2)">Tu ajoutes des références à CETTE chaîne (sans changer la chaîne active).</span>
-  </div>
+  <p class="page-sub">Les références de la <b>chaîne active</b> (change de chaîne dans le header pour gérer une autre chaîne) : les <b>chansons</b> qui orientent le style/mood, et les <b>vidéos références</b> (codes de titres/miniatures). Elles nourrissent le playbook et la palette d'émotions.</p>
 
   <h2 style="margin-top:8px">Chansons de référence</h2>
   <div class="form-card">
@@ -141,16 +135,20 @@
 
   <h2 style="margin-top:32px">Vidéos références</h2>
   <div class="form-card">
-    <div class="field" style="margin-bottom:0">
-      <label>Une URL par ligne — vidéo (recommandé) ou chaîne</label>
-      <textarea id="inspiration_urls" rows="5" placeholder="https://youtu.be/xxxxxxxxxxx&#10;https://www.youtube.com/watch?v=xxxxxxxxxxx&#10;(ou une chaîne : https://www.youtube.com/@exemple)"></textarea>
-      <div class="field-hint">On analyse leurs titres/miniatures pour en tirer les formats qui marchent (playbook) et enrichir la palette d'émotions. Pour une chaîne, on prend ses vidéos récentes.</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
-      <button class="btn-primary" id="save-channels" type="button">Enregistrer les références</button>
-      <span class="form-msg" id="chan-msg" style="margin:0"></span>
-    </div>
+    <form id="vf">
+      <div class="form-row">
+        <div class="field" style="flex:1">
+          <label>URL d'une vidéo (recommandé) ou d'une chaîne</label>
+          <input id="video_url" type="url" placeholder="https://youtu.be/... (ou https://www.youtube.com/@chaine)" required>
+        </div>
+        <button class="btn-primary" id="vbtn" type="submit">Ajouter</button>
+      </div>
+      <div class="field-hint">On analyse leurs titres/miniatures pour en tirer les formats de titres qui marchent (playbook) + enrichir la palette d'émotions.</div>
+      <div class="form-msg" id="vmsg"></div>
+    </form>
   </div>
+  <div class="list" id="vlist"></div>
+  <div class="empty" id="vempty" style="display:none">Aucune vidéo référence pour l'instant.</div>
 </div>
 
 <script>
@@ -165,24 +163,8 @@ const btn = document.getElementById('btn');
 const msg = document.getElementById('msg');
 const list = document.getElementById('list');
 const empty = document.getElementById('empty');
-const refChannel = document.getElementById('ref-channel');
-let channelId = null; // chaîne pour laquelle on gère les références (indépendant de la chaîne active)
 
-// Charge la liste des chaînes dans le sélecteur (défaut = chaîne active).
-async function initChannelSelector() {
-  try {
-    const d = await (await fetch('/api/channels')).json();
-    refChannel.innerHTML = '';
-    (d.channels || []).forEach(c => {
-      const o = document.createElement('option'); o.value = c.id; o.textContent = c.name + (c.is_active ? ' (active)' : '');
-      refChannel.appendChild(o);
-    });
-    channelId = d.activeId || (d.channels && d.channels[0] && d.channels[0].id) || null;
-    if (channelId) refChannel.value = channelId;
-  } catch (e) {}
-  refChannel.addEventListener('change', () => { channelId = refChannel.value; load(); loadVideoRefs(); });
-}
-
+// ── Chansons de référence (chaîne active) ──
 f.onsubmit = async (e) => {
   e.preventDefault();
   btn.disabled = true; msg.className = 'form-msg'; msg.textContent = 'Ajout…';
@@ -190,7 +172,6 @@ f.onsubmit = async (e) => {
     const r = await fetch('/api/references', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        channel_id: channelId,
         spotify_url: document.getElementById('spotify_url').value.trim(),
         mood_tags: document.getElementById('mood_tags').value.trim()
       })
@@ -205,7 +186,7 @@ f.onsubmit = async (e) => {
 function fmtDate(s) { return new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }); }
 
 async function load() {
-  const rows = await (await fetch('/api/references' + (channelId ? '?channel_id=' + channelId : ''))).json();
+  const rows = await (await fetch('/api/references')).json();
   list.innerHTML = '';
   empty.style.display = rows.length ? 'none' : 'block';
   for (const r of rows) {
@@ -235,27 +216,63 @@ async function load() {
     list.appendChild(div);
   }
 }
-// ── Vidéos références (inspiration_urls) de la chaîne sélectionnée ──
-const chanMsg = document.getElementById('chan-msg');
+
+// ── Vidéos références (chaîne active) : liste avec ajout + suppression individuelle ──
+const vf = document.getElementById('vf');
+const vbtn = document.getElementById('vbtn');
+const vmsg = document.getElementById('vmsg');
+const vlist = document.getElementById('vlist');
+const vempty = document.getElementById('vempty');
+let videoRefs = [];
+
 async function loadVideoRefs() {
   try {
-    const d = await (await fetch('/api/references/videos' + (channelId ? '?channel_id=' + channelId : ''))).json();
-    document.getElementById('inspiration_urls').value = (d.inspiration_urls || []).join('\n');
-  } catch (e) {}
+    const d = await (await fetch('/api/references/videos')).json();
+    videoRefs = Array.isArray(d.inspiration_urls) ? d.inspiration_urls : [];
+  } catch (e) { videoRefs = []; }
+  renderVideoRefs();
 }
-document.getElementById('save-channels').onclick = async () => {
-  const b = document.getElementById('save-channels');
-  b.disabled = true; chanMsg.className = 'form-msg'; chanMsg.textContent = 'Enregistrement…';
-  const urls = document.getElementById('inspiration_urls').value.split('\n').map(x => x.trim()).filter(Boolean);
-  try {
-    const d = await (await fetch('/api/references/videos', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel_id: channelId, inspiration_urls: urls }) })).json();
-    chanMsg.textContent = d.ok ? 'Enregistré ✓' : ('Erreur : ' + (d.error || ''));
-    if (!d.ok) chanMsg.className = 'form-msg err';
-  } catch (e) { chanMsg.className = 'form-msg err'; chanMsg.textContent = 'Erreur réseau'; }
-  b.disabled = false;
+
+function renderVideoRefs() {
+  vlist.innerHTML = '';
+  vempty.style.display = videoRefs.length ? 'none' : 'block';
+  videoRefs.forEach((url, i) => {
+    const div = document.createElement('div');
+    div.className = 'ref';
+    const clean = String(url).replace(/\?.*$/, ''); // masque le ?si=… de tracking
+    div.innerHTML = `
+      <div class="ref-main"><div class="ref-title">${clean}</div></div>
+      <div class="ref-actions">
+        <a href="${url}" target="_blank">Ouvrir ↗</a>
+        <button class="del">Supprimer</button>
+      </div>`;
+    div.querySelector('.del').onclick = async () => {
+      if (!confirm('Supprimer cette vidéo référence ?')) return;
+      videoRefs.splice(i, 1);
+      await saveVideoRefs();
+    };
+    vlist.appendChild(div);
+  });
+}
+
+async function saveVideoRefs() {
+  await fetch('/api/references/videos', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inspiration_urls: videoRefs }) }).catch(() => {});
+  await loadVideoRefs();
+}
+
+vf.onsubmit = async (e) => {
+  e.preventDefault();
+  const url = document.getElementById('video_url').value.trim();
+  if (!url) return;
+  if (videoRefs.includes(url)) { vmsg.className = 'form-msg err'; vmsg.textContent = 'Déjà ajoutée.'; return; }
+  vbtn.disabled = true; vmsg.className = 'form-msg'; vmsg.textContent = 'Ajout…';
+  videoRefs.push(url);
+  await saveVideoRefs();
+  vf.reset(); vmsg.textContent = ''; vbtn.disabled = false;
 };
 
-(async () => { await initChannelSelector(); await load(); await loadVideoRefs(); })();
+load();
+loadVideoRefs();
 </script>
 <script src="/theme.js"></script>
 </body>
