@@ -27,7 +27,7 @@ async function fetchAssetFile(asset, dir) {
   return { path, isVideo: (asset.mime_type || '').startsWith('video') };
 }
 
-export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, titleOverride = '', backgroundAssetId = null, controller, log = () => {} } = {}) {
+export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null, controller, log = () => {} } = {}) {
   const ck = () => { if (controller?.cancelled) throw new Error('cancelled'); }; // point d'annulation entre étapes
   const channel = await getActiveChannel();
   const chanFilter = channel ? `&channel_id=eq.${channel.id}` : '';
@@ -210,9 +210,15 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       await logStep('upload', 'skip', 'dry-run');
     }
 
-    // 6b. Miniature : image de fond de la vidéo + titre en texte (police embarquée). Activable par chaîne.
+    // 6b. Miniature : image + titre en texte (police embarquée). Activable par chaîne.
+    // Image de la miniature : celle CHOISIE par l'utilisateur (thumbnailAssetId, indépendante du fond) si fournie,
+    // sinon la 1re image de fond de la vidéo.
     let thumbnailUrl = null;
-    const thumbImagePath = backgrounds.find(b => !b.isVideo)?.path || null;
+    let thumbImagePath = backgrounds.find(b => !b.isVideo)?.path || null;
+    if (thumbnailAssetId) {
+      const tAsset = assets.find(a => a.id === thumbnailAssetId && a.kind === 'background' && (a.mime_type || '').startsWith('image'));
+      if (tAsset) { try { thumbImagePath = (await fetchAssetFile(tAsset, workDir)).path; await logStep('thumbnail', 'ok', 'miniature imposée : ' + (tAsset.filename || tAsset.id)); } catch (e) { await logStep('thumbnail', 'warn', 'image miniature illisible : ' + e.message); } }
+    }
     if (!dryRun && youtubeId && channel?.thumbnail_enabled !== false && thumbImagePath) {
       try {
         const thumbPath = join(workDir, 'thumbnail.jpg');

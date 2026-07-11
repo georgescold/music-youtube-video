@@ -139,16 +139,21 @@
     </div>
   </div>
   <details class="gen-opts" id="genOpts">
-    <summary>Options : titre &amp; miniature <span class="opts-badge" id="optsBadge" style="display:none"></span></summary>
+    <summary>Options : titre, fond &amp; miniature <span class="opts-badge" id="optsBadge" style="display:none"></span></summary>
     <div class="gen-opts-body">
       <div class="opt-row">
         <label for="opt-title">Titre (optionnel)</label>
-        <input id="opt-title" type="text" maxlength="200" placeholder="Laisse vide → titre généré automatiquement">
+        <input id="opt-title" type="text" maxlength="200" placeholder="Laisse vide → titre généré automatiquement (sinon ton titre est repris tel quel)">
       </div>
       <div class="opt-row">
-        <label>Miniature (optionnel) — choisis une de tes images de fond</label>
+        <label>Image de fond (optionnel) — pilote aussi la musique/l'émotion</label>
+        <div class="thumb-pick" id="optBg"><span class="thumb-pick-empty">Aucune image de fond importée pour cette chaîne.</span></div>
+        <p class="opt-hint">Image principale de la vidéo. Vide → l'outil choisit parmi tes images.</p>
+      </div>
+      <div class="opt-row">
+        <label>Miniature (optionnel) — l'image affichée en vignette YouTube</label>
         <div class="thumb-pick" id="optThumbs"><span class="thumb-pick-empty">Aucune image de fond importée pour cette chaîne.</span></div>
-        <p class="opt-hint">L'image choisie devient la miniature <b>et</b> l'image principale de la vidéo (elle pilote aussi la musique). Vide → l'outil choisit.</p>
+        <p class="opt-hint">Indépendante du fond. Vide → reprend l'image de fond.</p>
       </div>
     </div>
   </details>
@@ -186,36 +191,39 @@ let polling = false;
   } catch (e) {}
 })();
 
-// Options : sélecteur de miniature (images de fond de la chaîne active). null = auto.
-let selectedThumbId = null;
-const optThumbs = document.getElementById('optThumbs');
+// Options : sélecteurs d'image de FOND et de MINIATURE (images de la chaîne active), indépendants. null = auto.
+let selectedBgId = null, selectedThumbId = null;
 const optTitle = document.getElementById('opt-title');
 const optsBadge = document.getElementById('optsBadge');
 function refreshOptsBadge() {
-  const n = (optTitle.value.trim() ? 1 : 0) + (selectedThumbId ? 1 : 0);
-  optsBadge.style.display = n ? '' : 'none';
-  optsBadge.textContent = n === 2 ? 'titre + miniature' : (optTitle.value.trim() ? 'titre' : (selectedThumbId ? 'miniature' : ''));
+  const parts = [];
+  if (optTitle.value.trim()) parts.push('titre');
+  if (selectedBgId) parts.push('fond');
+  if (selectedThumbId) parts.push('miniature');
+  optsBadge.style.display = parts.length ? '' : 'none';
+  optsBadge.textContent = parts.join(' + ');
 }
 optTitle.addEventListener('input', refreshOptsBadge);
+// Construit un sélecteur d'images (Auto + vignettes) dans `container`, appelle onPick(id|null).
+function buildPicker(container, imgs, onPick) {
+  container.innerHTML = '';
+  const opts = [];
+  const mk = (cls, txt, id, title) => {
+    const el = document.createElement('div'); el.className = 'thumb-opt ' + cls; if (title) el.title = title;
+    if (txt) el.textContent = txt; else { const im = document.createElement('img'); im.loading = 'lazy'; im.src = id.__url; el.appendChild(im); }
+    el.onclick = () => { opts.forEach(o => o.classList.remove('sel')); el.classList.add('sel'); onPick(id.__id ?? null); };
+    container.appendChild(el); opts.push(el); return el;
+  };
+  mk('thumb-auto sel', 'Auto', { __id: null }, 'Laisse l\'outil choisir');
+  for (const a of imgs) mk('', '', { __id: a.id, __url: a.url }, a.filename || '');
+}
 (async () => {
   try {
     const assets = await (await fetch('/api/assets')).json();
     const imgs = (Array.isArray(assets) ? assets : []).filter(a => a.kind === 'background' && /^image\//.test(a.mime_type || '') && a.url);
     if (!imgs.length) return; // garde le message "aucune image"
-    optThumbs.innerHTML = '';
-    const auto = document.createElement('div');
-    auto.className = 'thumb-opt thumb-auto sel'; auto.textContent = 'Auto'; auto.title = 'Laisse l\'outil choisir';
-    optThumbs.appendChild(auto);
-    const opts = [auto];
-    const select = (el, id) => { selectedThumbId = id; opts.forEach(o => o.classList.remove('sel')); el.classList.add('sel'); refreshOptsBadge(); };
-    auto.onclick = () => select(auto, null);
-    for (const a of imgs) {
-      const el = document.createElement('div');
-      el.className = 'thumb-opt'; el.title = a.filename || '';
-      const im = document.createElement('img'); im.src = a.url; im.loading = 'lazy'; el.appendChild(im);
-      el.onclick = () => select(el, a.id);
-      optThumbs.appendChild(el); opts.push(el);
-    }
+    buildPicker(document.getElementById('optBg'), imgs, id => { selectedBgId = id; refreshOptsBadge(); });
+    buildPicker(document.getElementById('optThumbs'), imgs, id => { selectedThumbId = id; refreshOptsBadge(); });
   } catch (e) {}
 })();
 
@@ -223,7 +231,8 @@ genBtn.onclick = async () => {
   genBtn.disabled = true;
   const body = { minMin: Number(document.getElementById('dmin').value), maxMin: Number(document.getElementById('dmax').value) };
   if (optTitle.value.trim()) body.title = optTitle.value.trim();
-  if (selectedThumbId) body.backgroundAssetId = selectedThumbId;
+  if (selectedBgId) body.backgroundAssetId = selectedBgId;
+  if (selectedThumbId) body.thumbnailAssetId = selectedThumbId;
   const d = await (await fetch('/api/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
   if (!d.ok) { genbar.className = 'genbar err'; genbar.textContent = d.error; genBtn.disabled = false; return; }
   startPolling();

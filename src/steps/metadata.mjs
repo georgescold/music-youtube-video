@@ -90,8 +90,9 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
   let meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
   const forcedTitle = String(titleOverride || '').trim();
   if (forcedTitle) {
-    // Titre imposé par l'utilisateur : on garde le reste (hook, mots-clés, hashtags, tags) mais on force le titre.
-    meta.title = /\[\s*playlist\s*\]/i.test(forcedTitle) ? forcedTitle : forcedTitle + ' [Playlist]';
+    // Titre imposé par l'utilisateur : on le respecte TEL QUEL (aucun ajout de [Playlist]) et on garde le reste
+    // (hook, mots-clés, hashtags, tags) généré par Claude.
+    meta.title = forcedTitle;
     log('titre imposé : ' + meta.title);
   } else {
     // Anti-doublon : si le titre existe déjà, on régénère (jusqu'à 3 fois) en le mettant explicitement à éviter.
