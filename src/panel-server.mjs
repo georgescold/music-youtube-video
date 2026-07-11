@@ -220,6 +220,7 @@ button:disabled{opacity:.5}
 .err{color:var(--danger)}.ok{color:var(--success)}
 .theme-toggle{position:fixed;top:16px;right:16px;background:var(--color-paper);color:var(--color-ink);border:1px solid var(--color-rule2);border-radius:100px;padding:6px 11px;font-size:14px;line-height:1;cursor:pointer;width:auto;margin:0}
 </style>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/theme.css">
 <script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 </head><body>
@@ -256,6 +257,9 @@ const server = http.createServer(async (req, res) => {
     const path = url.pathname;
     const q = url.searchParams;
 
+    if (req.method === 'GET' && path === '/favicon.svg') {
+      return readFile(join(__dirname, 'favicon.svg')).then(b => send(res, 200, 'image/svg+xml; charset=utf-8', b)).catch(() => send(res, 404, 'text/plain', ''));
+    }
     if (req.method === 'GET' && path === '/theme.css') {
       return readFile(join(__dirname, 'theme.css')).then(b => send(res, 200, 'text/css; charset=utf-8', b)).catch(() => send(res, 404, 'text/plain', ''));
     }
