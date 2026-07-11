@@ -14,6 +14,7 @@ import { getActiveChannel, updateChannel, channelCreds } from './services/channe
 import { analyzeImage } from './services/vision.mjs';
 import { chooseEmotionIndex } from './steps/coach.mjs';
 import { sendDiscord, COLORS } from './services/notify.mjs';
+import { createEpidemicClient, isEpidemicAuthError, EPIDEMIC_AUTH_MESSAGE } from './services/epidemicMcp.mjs';
 
 const MOODS = ['romantique et doux', 'romantique nostalgique', 'romantique piano', 'romantique nuit', 'romantique acoustique'];
 
@@ -117,9 +118,12 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
 
     // 1. Curation (pilotée par l'émotion)
     await logStep('curate', 'start');
+    // Client Epidemic de la CHAÎNE (jeton stocké dans l'app), pas le token d'env — sinon coller un jeton frais
+    // dans l'app ne corrigerait rien (le pipeline resterait sur EPIDEMIC_JWT d'env, potentiellement périmé).
+    const epidemicClient = createEpidemicClient(channelCreds(channel).epidemicJwt);
     const curation = await curatePlaylist({
       references: references.map(r => ({ spotify_url: r.spotify_url, title: r.title, mood_tags: r.mood_tags })),
-      targetSec: target, moodHint: mood, emotion, controller, log
+      targetSec: target, moodHint: mood, emotion, client: epidemicClient, controller, log
     });
     const { tracks, totalSec } = curation;
     if (!tracks.length) throw new Error('curation vide (aucune chanson de référence exploitable)');
@@ -129,7 +133,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
     // 2. Download
     await setStatus('downloading');
     await logStep('download', 'start');
-    const withPaths = await downloadAll(tracks, join(workDir, 'audio'), log, controller);
+    const withPaths = await downloadAll(tracks, join(workDir, 'audio'), log, controller, epidemicClient);
     await logStep('download', 'ok');
     ck();
 
@@ -249,9 +253,12 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
       await dbDelete('videos', `id=eq.${vid}`).catch(() => setStatus('cancelled').catch(() => {}));
       await logStep('cancelled', 'ok', 'génération annulée par l\'utilisateur').catch(() => {});
     } else {
-      await setStatus('failed', { error: String(e.message || e) }).catch(() => {});
-      await logStep('error', 'fail', String(e.message || e));
-      if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '❌ Échec de génération vidéo', description: String(e.message || e).slice(0, 800), color: COLORS.error }).catch(() => {});
+      // Jeton Epidemic refusé (401) : message clair + tag 'epidemic_auth' pour la reprise auto au save d'un jeton frais.
+      const authErr = isEpidemicAuthError(e);
+      const msg = authErr ? EPIDEMIC_AUTH_MESSAGE : String(e.message || e);
+      await setStatus('failed', { error: msg, note: authErr ? 'epidemic_auth' : null }).catch(() => {});
+      await logStep('error', 'fail', msg);
+      if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: authErr ? '🔑 Epidemic déconnecté' : '❌ Échec de génération vidéo', description: msg.slice(0, 800), color: COLORS.error }).catch(() => {});
     }
     throw e;
   } finally {

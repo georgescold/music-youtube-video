@@ -31,7 +31,11 @@ export function createEpidemicClient(jwt, url) {
 
     const ct = res.headers.get('content-type') || '';
     const raw = await res.text();
-    if (!res.ok) throw new Error(`MCP ${method}: HTTP ${res.status} ${raw.slice(0, 300)}`);
+    if (!res.ok) {
+      const err = new Error(`MCP ${method}: HTTP ${res.status} ${raw.slice(0, 300)}`);
+      if (res.status === 401 || res.status === 403) err.code = 'EPIDEMIC_AUTH';
+      throw err;
+    }
     const payload = ct.includes('text/event-stream') ? parseSSE(raw) : (() => { try { return JSON.parse(raw); } catch { return null; } })();
     if (!payload) throw new Error(`MCP ${method}: réponse illisible (${ct}): ${raw.slice(0, 200)}`);
     if (payload.error) throw new Error(`MCP ${method}: ${JSON.stringify(payload.error)}`);
@@ -53,6 +57,12 @@ export function createEpidemicClient(jwt, url) {
     try { return JSON.parse(text); } catch { return text; }
   }
   return { listTools, callTool, callToolRaw, ensureInit };
+}
+
+// Message clair + détection d'une erreur d'authentification Epidemic (jeton expiré / session fermée).
+export const EPIDEMIC_AUTH_MESSAGE = 'Epidemic Sound : jeton refusé (401). Le jeton a expiré ou la session Epidemic a été fermée. Va dans Paramètres → Epidemic Sound et colle un jeton frais, puis relance.';
+export function isEpidemicAuthError(e) {
+  return e?.code === 'EPIDEMIC_AUTH' || /HTTP 40[13]\b/.test(String(e?.message || ''));
 }
 
 // Client par défaut (lazy) basé sur l'env — pour la compat mono-tenant existante.

@@ -13,6 +13,7 @@ import { renderThumbnail, stripPlaylistTag, THUMB_FONTS } from './services/ffmpe
 import { tmpdir } from 'node:os';
 import { rmSync } from 'node:fs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
+import { EPIDEMIC_AUTH_MESSAGE } from './services/epidemicMcp.mjs';
 import { listChannels, getActiveChannel, getChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView, propagateSharedCreds } from './services/channels.mjs';
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
@@ -444,6 +445,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/api/videos/generate') {
       const refs = await dbSelect('reference_songs', '?active=eq.true&limit=1').catch(() => []);
       if (!refs.length) return json(res, { ok: false, error: 'Ajoute au moins une chanson de référence active avant de générer.' });
+      // Pré-check Epidemic : le jeton meurt régulièrement (session fermée). On vérifie AVANT de lancer un run
+      // pour ne pas gâcher une génération et afficher un message clair (au lieu de « curation vide »).
+      const preCh = await getActiveChannel();
+      const preEp = await testEpidemic(channelCreds(preCh).epidemicJwt).catch(() => ({ ok: false }));
+      if (!preEp.ok) {
+        if (preCh?.discord_webhook) sendDiscord(preCh.discord_webhook, { title: '🔑 Epidemic déconnecté', description: EPIDEMIC_AUTH_MESSAGE, color: COLORS.error }).catch(() => {});
+        return json(res, { ok: false, error: EPIDEMIC_AUTH_MESSAGE });
+      }
       // Durée en fourchette (minutes) fournie à la génération manuelle -> tirage aléatoire ; sinon fourchette de la chaîne.
       const b = await readJsonBody(req).catch(() => ({}));
       let targetSec = null;
@@ -616,7 +625,21 @@ const server = http.createServer(async (req, res) => {
       await propagateSharedCreds(patch).catch(() => {});
       // Si la fenêtre horaire ou l'interrupteur du CRON a changé, on reprogramme.
       if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch || 'max_posts_per_day' in patch) setupScheduler().catch(() => {});
-      return json(res, { ok: true, channel: channelPublicView(updated) });
+      // Reprise auto : un jeton Epidemic frais vient d'être collé -> si des vidéos avaient échoué faute d'Epidemic,
+      // on nettoie ces tentatives mortes et on relance une génération automatiquement.
+      let resumed = false;
+      if (patch.epidemic_jwt) {
+        const ep = await testEpidemic(channelCreds(updated).epidemicJwt).catch(() => ({ ok: false }));
+        if (ep.ok) {
+          const stuck = await dbSelect('videos', `?channel_id=eq.${ch.id}&status=eq.failed&note=eq.epidemic_auth&select=id`).catch(() => []);
+          if (stuck.length) {
+            await dbDelete('videos', `channel_id=eq.${ch.id}&status=eq.failed&note=eq.epidemic_auth`).catch(() => {});
+            resumed = generateOnce({ dryRun: false });
+            if (updated.discord_webhook) sendDiscord(updated.discord_webhook, { title: '🔁 Epidemic reconnecté', description: `Jeton frais accepté — reprise automatique de la génération (${stuck.length} tentative(s) en échec nettoyée(s)).`, color: COLORS.ok }).catch(() => {});
+          }
+        }
+      }
+      return json(res, { ok: true, channel: channelPublicView(updated), resumed });
     }
     if (req.method === 'POST' && path === '/api/test/discord') {
       const ch = await getActiveChannel();

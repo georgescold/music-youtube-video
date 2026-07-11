@@ -1,7 +1,7 @@
 // Curation adaptative : Claude analyse les références, décide voix/instrumental et les angles,
 // puis on cherche multi-angles + externalID + moods + similaires -> dédup + variété d'artistes.
 // Conçu pour être multi-utilisateurs : aucune préférence de style codée en dur, tout vient des références.
-import { callTool } from '../services/epidemicMcp.mjs';
+import { callTool as defaultCallTool, isEpidemicAuthError } from '../services/epidemicMcp.mjs';
 import { askClaude, extractJson } from '../services/claude.mjs';
 
 export function spotifyTrackId(url) {
@@ -18,17 +18,19 @@ function mainArtist(rec) {
 }
 export function durationSec(rec) { return Math.round((rec.audioFile?.durationInMilliseconds || 0) / 1000); }
 
-async function searchTerm(term, filter, first = 10) {
-  try { return recs(await callTool('SearchRecordings', { query: { term }, filter, sort: { by: 'RELEVANCE', order: 'DESCENDING' }, first })); }
-  catch { return []; }
+// Une erreur d'auth (401) est fatale et concerne TOUS les appels -> on la fait remonter au lieu de l'avaler
+// silencieusement (sinon le pipeline échouait avec le message trompeur « curation vide »).
+async function searchTerm(call, term, filter, first = 10) {
+  try { return recs(await call('SearchRecordings', { query: { term }, filter, sort: { by: 'RELEVANCE', order: 'DESCENDING' }, first })); }
+  catch (e) { if (isEpidemicAuthError(e)) throw e; return []; }
 }
-async function searchExternal(spotifyId, filter, first = 15) {
-  try { return recs(await callTool('SearchRecordings', { query: { externalID: { type: 'SPOTIFY_TRACK', id: spotifyId } }, filter, first })); }
-  catch { return []; }
+async function searchExternal(call, spotifyId, filter, first = 15) {
+  try { return recs(await call('SearchRecordings', { query: { externalID: { type: 'SPOTIFY_TRACK', id: spotifyId } }, filter, first })); }
+  catch (e) { if (isEpidemicAuthError(e)) throw e; return []; }
 }
-async function similarTo(id, first = 8) {
-  try { return recs(await callTool('SearchSimilarToRecording', { id, first })); }
-  catch { return []; }
+async function similarTo(call, id, first = 8) {
+  try { return recs(await call('SearchSimilarToRecording', { id, first })); }
+  catch (e) { if (isEpidemicAuthError(e)) throw e; return []; }
 }
 
 // Claude analyse le style COMMUN des références et décide de l'approche (adaptatif, pas de style imposé).
@@ -66,8 +68,9 @@ function shuffle(arr) {
 }
 
 // vocalsOverride: 'instrumental' | 'vocal' | 'mixed' | undefined (undefined = Claude décide, adaptatif)
-export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, emotion, controller, log = () => {} }) {
+export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, emotion, client, controller, log = () => {} }) {
   const ck = () => { if (controller?.cancelled) throw new Error('cancelled'); };
+  const call = client?.callTool || defaultCallTool; // client Epidemic de la chaîne (jeton stocké dans l'app), sinon défaut (env)
   // Si une émotion pilote la vidéo, elle devient le contexte prioritaire de la curation.
   const hint = emotion ? `${emotion.name} — ${emotion.description}` : moodHint;
   const analysis = await analyzeReferences(references, hint);
@@ -91,15 +94,15 @@ export async function curatePlaylist({ references = [], targetSec = 5400, vocals
   const pool = new Map();
   const add = list => { for (const r of list) pool.set(r.id, r); };
 
-  for (const a of angles) { ck(); add(await searchTerm(a, filter, 10)); }
+  for (const a of angles) { ck(); add(await searchTerm(call, a, filter, 10)); }
   for (const ref of references) {
     ck();
     const sid = spotifyTrackId(ref.spotify_url);
-    if (sid) add(await searchExternal(sid, filter, 15));
-    for (const m of (ref.mood_tags || [])) add(await searchTerm(m, filter, 8));
+    if (sid) add(await searchExternal(call, sid, filter, 15));
+    for (const m of (ref.mood_tags || [])) add(await searchTerm(call, m, filter, 8));
   }
   log('pool après recherches : ' + pool.size);
-  for (const seed of shuffle([...pool.values()]).slice(0, 6)) { ck(); add(await similarTo(seed.id, 8)); }
+  for (const seed of shuffle([...pool.values()]).slice(0, 6)) { ck(); add(await similarTo(call, seed.id, 8)); }
   log('pool après similaires : ' + pool.size);
 
   const shuffled = shuffle([...pool.values()]);
