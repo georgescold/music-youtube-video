@@ -460,7 +460,10 @@ const server = http.createServer(async (req, res) => {
       const [v] = await dbSelect('videos', `?id=eq.${b.id}`);
       if (!v) return json(res, { ok: false, error: 'vidéo introuvable' });
       try {
-        if (v.youtube_video_id) await setPrivacyStatus(v.youtube_video_id, 'public');
+        if (v.youtube_video_id) {
+          const vch = v.channel_id ? await getChannel(v.channel_id) : await getActiveChannel();
+          await setPrivacyStatus(v.youtube_video_id, 'public', channelCreds(vch || {}).youtube);
+        }
         await dbPatch('videos', `id=eq.${b.id}`, { status: 'published', published_at: new Date().toISOString() });
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
@@ -482,7 +485,10 @@ const server = http.createServer(async (req, res) => {
       const b = await readJsonBody(req);
       const [v] = await dbSelect('videos', `?id=eq.${b.id}`);
       try {
-        if (v?.youtube_video_id) await deleteVideo(v.youtube_video_id).catch(() => {});
+        if (v?.youtube_video_id) {
+          const vch = v.channel_id ? await getChannel(v.channel_id) : await getActiveChannel();
+          await deleteVideo(v.youtube_video_id, channelCreds(vch || {}).youtube).catch(() => {});
+        }
         await dbDelete('videos', `id=eq.${b.id}`);
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }

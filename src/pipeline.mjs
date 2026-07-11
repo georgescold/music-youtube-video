@@ -37,6 +37,12 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
   const backgroundAssets = assets.filter(a => a.kind === 'background' && isMedia(a));
   const adAssets = assets.filter(a => a.kind === 'ad' && isMedia(a));
 
+  // Upload sur le compte YouTube DE LA CHAÎNE ACTIVE (pas le token d'env). Échec clair si pas connectée.
+  const ytCreds = channelCreds(channel).youtube;
+  if (!dryRun && !ytCreds?.refreshToken) {
+    throw new Error("Cette chaîne n'a pas de compte YouTube connecté. Va dans Paramètres → YouTube et connecte SON compte (Refresh token via « ↻ Depuis YouTube » ou autorisation) avant de générer, sinon la vidéo partirait sur une autre chaîne.");
+  }
+
   // Durée cible : tirée au hasard dans la fourchette [min, max] de la chaîne (arrondie à la minute).
   const tMin = channel?.target_min_sec ?? channel?.target_duration_sec ?? 5400;
   const tMax = channel?.target_max_sec ?? channel?.target_duration_sec ?? tMin;
@@ -183,7 +189,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
       await logStep('upload', 'start');
       const uploaded = await uploadVideo({
         filePath: outPath, title: meta.title, description: meta.description,
-        tags: meta.tags, privacyStatus: 'private'
+        tags: meta.tags, privacyStatus: 'private', creds: ytCreds
       });
       youtubeId = uploaded.id;
       youtubeUrl = 'https://www.youtube.com/watch?v=' + youtubeId;
@@ -203,7 +209,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
           font: channel?.thumbnail_font || 'playfair',
           withText: channel?.thumbnail_text !== false
         });
-        await setThumbnail(youtubeId, thumbPath);
+        await setThumbnail(youtubeId, thumbPath, ytCreds);
         thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
         await logStep('thumbnail', 'ok');
       } catch (e) { await logStep('thumbnail', 'warn', e.message); }
@@ -212,7 +218,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
     // Mode de publication : "auto" -> passe la vidéo en public ; sinon -> brouillon à valider.
     let finalStatus = 'pending_review';
     if (!dryRun && youtubeId && channel?.publish_mode === 'auto') {
-      try { await setPrivacyStatus(youtubeId, 'public'); finalStatus = 'published'; await logStep('publish', 'ok', 'public (auto)'); }
+      try { await setPrivacyStatus(youtubeId, 'public', ytCreds); finalStatus = 'published'; await logStep('publish', 'ok', 'public (auto)'); }
       catch (e) { await logStep('publish', 'warn', e.message); }
     }
 
