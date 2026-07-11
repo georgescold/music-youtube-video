@@ -29,9 +29,33 @@ async function notify(msg) {
   } catch {}
 }
 
-// Normalise les cookies pour Playwright (accepte l'export "EditThisCookie"/DevTools : sameSite en texte, etc.).
+// Parse le format Netscape cookies.txt (export de "Get cookies.txt LOCALLY"). Les lignes httpOnly sont
+// préfixées "#HttpOnly_". On peut concaténer plusieurs fichiers (les commentaires "#" sont ignorés).
+function parseNetscape(text) {
+  const out = [];
+  for (const lineRaw of text.split(/\r?\n/)) {
+    let line = lineRaw, httpOnly = false;
+    if (line.startsWith('#HttpOnly_')) { httpOnly = true; line = line.slice(10); }
+    else if (line.startsWith('#') || !line.trim()) continue;
+    const f = line.split('\t');
+    if (f.length < 7) continue;
+    const [domain, , path, secure, expiry, name, ...rest] = f;
+    out.push({ name, value: rest.join('\t'), domain, path: path || '/', secure: secure === 'TRUE', httpOnly, expires: Number(expiry) || undefined });
+  }
+  return out;
+}
+
+// Normalise les cookies pour Playwright. Accepte : JSON (array Cookie-Editor/EditThisCookie/DevTools) OU
+// Netscape cookies.txt. Peu importe l'outil d'export utilisé.
 function normalizeCookies(raw) {
-  const arr = JSON.parse(raw);
+  const trimmed = raw.trim();
+  let arr;
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    const parsed = JSON.parse(trimmed);
+    arr = Array.isArray(parsed) ? parsed : (parsed.cookies || []);
+  } else {
+    arr = parseNetscape(trimmed);
+  }
   const ss = v => (['Strict', 'Lax', 'None'].includes(v) ? v : (v === 'no_restriction' ? 'None' : v === 'lax' ? 'Lax' : v === 'strict' ? 'Strict' : 'Lax'));
   return arr.map(c => {
     const out = { name: c.name, value: c.value, domain: c.domain, path: c.path || '/', httpOnly: !!c.httpOnly, secure: c.secure !== false, sameSite: ss(c.sameSite) };
