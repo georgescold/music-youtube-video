@@ -3,6 +3,9 @@ import { dbSelect, dbInsert, dbPatch, dbDelete } from './supabase.mjs';
 import { encrypt, decrypt, mask } from './crypto.mjs';
 
 const SENSITIVE = ['yt_client_secret', 'yt_refresh_token', 'epidemic_jwt', 'claude_token'];
+// Identifiants PARTAGÉS entre toutes les chaînes d'un même compte (mêmes accès Epidemic/Claude + même app OAuth Google).
+// Le refresh token YouTube et l'ID de chaîne restent, eux, propres à chaque chaîne.
+export const SHARED_ACCOUNT = ['epidemic_jwt', 'claude_token', 'yt_client_id', 'yt_client_secret'];
 
 export async function listChannels() {
   return dbSelect('channels', '?order=created_at.asc');
@@ -16,8 +19,21 @@ export async function getActiveChannel() {
 }
 export async function createChannel(name) {
   await dbPatch('channels', 'is_active=eq.true', { is_active: false }).catch(() => {});
-  const [ch] = await dbInsert('channels', [{ name: name || 'Nouvelle chaîne', is_active: true }]);
+  // Hérite des identifiants partagés d'une chaîne existante (valeurs déjà chiffrées, copiées telles quelles).
+  const existing = (await listChannels())[0];
+  const inherit = {};
+  if (existing) for (const k of SHARED_ACCOUNT) if (existing[k] != null) inherit[k] = existing[k];
+  const [ch] = await dbInsert('channels', [{ name: name || 'Nouvelle chaîne', is_active: true, ...inherit }]);
   return ch;
+}
+
+// Propage les identifiants partagés (patch en clair) vers TOUTES les chaînes (chiffrés au passage).
+export async function propagateSharedCreds(patch) {
+  const shared = {};
+  for (const k of SHARED_ACCOUNT) if (k in patch) shared[k] = patch[k];
+  if (!Object.keys(shared).length) return;
+  const all = await listChannels();
+  for (const c of all) await updateChannel(c.id, shared).catch(() => {});
 }
 export async function setActiveChannel(id) {
   await dbPatch('channels', 'is_active=eq.true', { is_active: false }).catch(() => {});

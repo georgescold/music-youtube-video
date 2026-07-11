@@ -10,7 +10,7 @@ import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, stor
 import { runPipeline } from './pipeline.mjs';
 import { setPrivacyStatus, deleteVideo, getMyChannel } from './services/youtube.mjs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
-import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView } from './services/channels.mjs';
+import { listChannels, getActiveChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView, propagateSharedCreds } from './services/channels.mjs';
 import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
 import { deriveEmotions } from './steps/emotions.mjs';
@@ -526,6 +526,8 @@ const server = http.createServer(async (req, res) => {
         if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
       }
       const updated = await updateChannel(ch.id, patch);
+      // Identifiants partagés du compte (Epidemic/Claude/OAuth client) -> répercutés sur TOUTES les chaînes.
+      await propagateSharedCreds(patch).catch(() => {});
       // Si la fenêtre horaire ou l'interrupteur du CRON a changé, on reprogramme.
       if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch || 'max_posts_per_day' in patch) setupScheduler().catch(() => {});
       return json(res, { ok: true, channel: channelPublicView(updated) });
