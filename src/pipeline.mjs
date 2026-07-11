@@ -189,7 +189,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, con
       await logStep('upload', 'start');
       const uploaded = await uploadVideo({
         filePath: outPath, title: meta.title, description: meta.description,
-        tags: meta.tags, privacyStatus: 'private', creds: ytCreds
+        tags: meta.tags, privacyStatus: 'unlisted', creds: ytCreds
       });
       youtubeId = uploaded.id;
       youtubeUrl = 'https://www.youtube.com/watch?v=' + youtubeId;

@@ -99,7 +99,7 @@
   <div class="head">
     <div>
       <h1>Vidéos</h1>
-      <p class="page-sub">Les vidéos générées atterrissent ici en brouillon privé. Relis, puis publie.</p>
+      <p class="page-sub">Les vidéos générées atterrissent ici en <b>non répertorié</b> (accessibles par lien, non visibles publiquement). Relis, puis publie.</p>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <span style="font-size:12px;color:var(--color-mut);font-weight:600">Durée</span>
@@ -208,7 +208,7 @@ async function load() {
     const open = v.id === openId;
     const canReview = v.status === 'pending_review';
     const embed = v.youtube_video_id ? `<iframe class="preview" src="https://www.youtube.com/embed/${v.youtube_video_id}" allowfullscreen></iframe>` : '';
-    const ytLink = v.youtube_url ? `<a class="yt-link" href="${v.youtube_url}" target="_blank">Ouvrir sur YouTube (privé) ↗</a>` : '';
+    const ytLink = v.youtube_url ? `<a class="yt-link" href="${v.youtube_url}" target="_blank">Ouvrir sur YouTube (non répertorié) ↗</a>` : '';
     div.innerHTML = `
       <div class="vid-head" data-id="${v.id}">
         <div style="flex:1;min-width:0">
