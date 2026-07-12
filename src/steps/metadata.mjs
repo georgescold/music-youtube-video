@@ -65,7 +65,8 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
   ].filter(Boolean).join('\n');
 
   const avoidSet = new Set(avoidTitles.map(normTitle));
-  const buildUser = (extraAvoid = []) => [
+  // Contexte partagé (mood + playbook déduit des vidéos de référence + titres à éviter).
+  const ctx = (extraAvoid = []) => [
     `Ambiance / mood de la playlist : ${mood}.`,
     // Les exemples "amour" ne servent que faute de contexte propre à la chaîne (sinon ils biaiseraient un autre domaine).
     !hasContext ? 'Exemples de tons de titres appréciés (inspire-toi du style, adapte au domaine de la chaîne, ne recopie aucun mot pour mot) :\n' + TITLE_SEEDS.map(s => '- ' + s).join('\n') : '',
@@ -73,34 +74,73 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     pb.title_style?.length ? 'STYLE D\'ÉCRITURE des titres à respecter (casse, ponctuation, ton…) : ' + pb.title_style.join(' · ') : '',
     pb.winning_examples?.length ? 'Titres gagnants réels (pour caler le ton, NE recopie pas) :\n' + pb.winning_examples.slice(0, 5).map(s => '- ' + s).join('\n') : '',
     pb.emotional_hooks?.length ? 'Déclencheurs émotionnels à exploiter : ' + pb.emotional_hooks.slice(0, 12).join(', ') : '',
-    (avoidTitles.length || extraAvoid.length) ? '\nNe RÉUTILISE JAMAIS aucun de ces titres déjà publiés (ni une variante quasi identique) :' : '',
-    [...avoidTitles, ...extraAvoid].slice(-40).map(s => '- ' + s).join('\n'),
-    '',
-    'Génère (dans la langue de la chaîne) :',
-    '- "title" : le titre-déclencheur (60-70 caractères max), incluant [Playlist]. Il DÉCUPLE l\'émotion du spectateur, ne décrit JAMAIS l\'image.',
+    (avoidTitles.length || extraAvoid.length) ? '\nNe RÉUTILISE JAMAIS aucun de ces titres déjà publiés (ni une variante quasi identique) :\n' + [...avoidTitles, ...extraAvoid].slice(-40).map(s => '- ' + s).join('\n') : ''
+  ];
+  // Spécif du reste (description/SEO), commune à toutes les passes qui produisent les métadonnées.
+  const restSpec = [
     '- "hook" : 2-3 phrases d\'accroche pour le début de la description, cohérentes avec le positionnement de la chaîne.',
     '- "keywords" : 12 à 18 mots-clés SEO adaptés au domaine (chaînes courtes).',
     '- "hashtags" : 8 hashtags pertinents pour ce domaine (sans le #, juste le mot).',
-    '- "tags" : 10 tags YouTube (mots ou expressions courtes).',
-    '',
+    '- "tags" : 10 tags YouTube (mots ou expressions courtes).'
+  ];
+  // Passe unique (repli / titre imposé) : titre + reste d'un coup.
+  const buildUser = (extraAvoid = []) => [
+    ...ctx(extraAvoid), '', 'Génère (dans la langue de la chaîne) :',
+    '- "title" : le titre-déclencheur (60-70 caractères max), incluant [Playlist]. Il DÉCUPLE l\'émotion du spectateur, ne décrit JAMAIS l\'image.',
+    ...restSpec, '',
     'Format EXACT : {"title":"...","hook":"...","keywords":["..."],"hashtags":["..."],"tags":["..."]}'
   ].filter(Boolean).join('\n');
+  // Passe 1 : plusieurs titres candidats, angles variés.
+  const candidatesUser = (extraAvoid = []) => [
+    ...ctx(extraAvoid), '',
+    'Génère 8 titres CANDIDATS, TOUS différents entre eux. Chacun est un DÉCLENCHEUR puissant qui DÉCUPLE l\'émotion RESSENTIE par le spectateur.',
+    'Explore un ANGLE et un ressort émotionnel DIFFÉRENTS à chaque candidat (le manque, l\'espoir, la nostalgie, l\'aveu, la promesse…). Ne décris JAMAIS l\'image.',
+    'Chaque candidat : 60-70 caractères max, respecte le style de la chaîne. N\'ajoute PAS [Playlist] (ce sera fait ensuite).',
+    'Format EXACT : {"candidates":["...","...","...","...","...","...","...","..."]}'
+  ].filter(Boolean).join('\n');
+  // Passe 2 : Claude JUGE les candidats, choisit (et peut affiner) le meilleur, puis produit le reste.
+  const judgeUser = (candidates, extraAvoid = []) => [
+    ...ctx(extraAvoid), '',
+    'Voici des titres CANDIDATS pour cette vidéo :',
+    candidates.map((c, i) => `${i + 1}. ${c}`).join('\n'), '',
+    'CHOISIS LE MEILLEUR selon ces critères, dans cet ordre :',
+    '1. Il DÉCUPLE au maximum l\'émotion RESSENTIE par le spectateur (un miroir de son propre vécu).',
+    '2. Il donne une envie IRRÉSISTIBLE de cliquer.',
+    '3. CHAQUE MOT est intentionnel et pesé, au service de l\'émotion — zéro mot faible ou de remplissage.',
+    '4. Il respecte le style de la chaîne et ne décrit JAMAIS l\'image.',
+    '5. Il est différent des titres déjà publiés.',
+    'Tu peux AFFINER le gagnant mot à mot (couper un mot faible, resserrer le rythme) si ça le rend plus fort — garde son esprit.',
+    '', 'Puis renvoie le titre final (avec [Playlist]) + le reste. Format EXACT :',
+    '{"title":"... [Playlist]","hook":"...","keywords":["..."],"hashtags":["..."],"tags":["..."]}'
+  ].filter(Boolean).join('\n');
 
-  log('génération métadonnées via Claude…');
-  let meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
+  let meta;
   const forcedTitle = String(titleOverride || '').trim();
   if (forcedTitle) {
-    // Titre imposé par l'utilisateur : on le respecte TEL QUEL (aucun ajout de [Playlist]) et on garde le reste
-    // (hook, mots-clés, hashtags, tags) généré par Claude.
+    // Titre imposé : on le respecte TEL QUEL, on ne génère que le reste (hook/keywords/hashtags/tags).
+    meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
     meta.title = forcedTitle;
     log('titre imposé : ' + meta.title);
   } else {
-    // Anti-doublon : si le titre existe déjà, on régénère (jusqu'à 3 fois) en le mettant explicitement à éviter.
-    const extraAvoid = [];
-    for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) {
-      log(`titre déjà utilisé ("${meta.title}") — nouvelle génération…`);
-      extraAvoid.push(meta.title);
-      meta = extractJson(await askClaude(system, buildUser(extraAvoid), 'sonnet'));
+    // Passe 1 — candidats.
+    log('génération de titres candidats…');
+    let cj = {};
+    try { cj = extractJson(await askClaude(system, candidatesUser(), 'sonnet')); } catch (e) { cj = {}; }
+    let candidates = (Array.isArray(cj.candidates) ? cj.candidates : []).map(s => String(s || '').trim()).filter(Boolean);
+    candidates = candidates.filter(t => !avoidSet.has(normTitle(t))).slice(0, 8);
+    if (candidates.length >= 2) {
+      // Passe 2 — sélection + affinage du meilleur + reste.
+      log(`sélection du meilleur titre parmi ${candidates.length} candidats…`);
+      meta = extractJson(await askClaude(system, judgeUser(candidates), 'sonnet'));
+      for (let attempt = 0; attempt < 2 && avoidSet.has(normTitle(meta.title)); attempt++) {
+        meta = extractJson(await askClaude(system, judgeUser(candidates, [meta.title]), 'sonnet'));
+      }
+      log('titre retenu : ' + meta.title);
+    } else {
+      // Repli (candidats indisponibles) : passe unique + anti-doublon.
+      meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
+      const extraAvoid = [];
+      for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) { extraAvoid.push(meta.title); meta = extractJson(await askClaude(system, buildUser(extraAvoid), 'sonnet')); }
     }
   }
 
