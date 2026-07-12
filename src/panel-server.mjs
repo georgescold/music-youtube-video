@@ -128,21 +128,30 @@ async function brainTick() {
   const byClient = await uploadsTodayByClient(all);
   const now = new Date();
   const todayKey = now.toISOString().slice(0, 10);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
   for (const ch of shuffle(chans)) { // mélange = équité entre chaînes
-    const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
-    const end = ch.publish_time_end || start;
-    const { startDt, endDt } = windowDates(start, end, now);
-    if (now < startDt || now > endDt) continue;                        // hors fenêtre horaire de la chaîne
-    const { published, ageDays } = await channelMaturity(ch.id);
-    const cadence = computeCadence({ publishedCount: published, ageDays, maxPerDay: ch.max_posts_per_day || 1 });
-    if ((await generatedToday(ch.id)) >= cadence) continue;            // cadence du jour (warm-up) de CETTE chaîne atteinte
+    // Planning : soit des HEURES explicites (nb d'heures = nb de vidéos/jour), soit repli fenêtre + warm-up.
+    const times = Array.isArray(ch.publish_times) ? ch.publish_times.filter(t => /^\d{2}:\d{2}$/.test(t)) : [];
+    let due;
+    if (times.length) {
+      due = times.filter(t => nowMin >= toMinOfDay(t)).length;          // nb de créneaux dont l'heure est déjà passée aujourd'hui
+      if (due === 0) continue;                                          // pas encore l'heure du 1er créneau
+    } else {
+      const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
+      const end = ch.publish_time_end || start;
+      const { startDt, endDt } = windowDates(start, end, now);
+      if (now < startDt || now > endDt) continue;                       // hors fenêtre horaire
+      const { published, ageDays } = await channelMaturity(ch.id);
+      due = computeCadence({ publishedCount: published, ageDays, maxPerDay: ch.max_posts_per_day || 1 }); // warm-up
+    }
+    if ((await generatedToday(ch.id)) >= due) continue;                 // déjà fait tous les créneaux dus
     const client = ch.yt_client_id || 'none';
     if ((byClient[client] || 0) >= DAILY_UPLOAD_BUDGET) {              // budget quota PARTAGÉ atteint
       const k = client + '|' + todayKey;
       if (!quotaNotified[k]) { quotaNotified[k] = true; notifyChannel(ch, 'quota', { title: '🚦 Quota YouTube du jour atteint', description: `Le budget d'uploads du jour (${DAILY_UPLOAD_BUDGET}) — partagé par les chaînes de ce compte Google — est atteint. Les générations reprendront demain. Pour en poster plus, demande une hausse de quota côté Google Cloud.`, color: COLORS.warn }); }
       continue;
     }
-    console.log(`[cerveau] génération « ${ch.name} » — warm-up ${cadence}/j · client à ${byClient[client] || 0}/${DAILY_UPLOAD_BUDGET}`);
+    console.log(`[cerveau] génération « ${ch.name} » — ${due} du à ${byClient[client] || 0}/${DAILY_UPLOAD_BUDGET} (quota)`);
     generateOnce({ dryRun: false, channelId: ch.id });
     return; // une génération par tick (sérialisée)
   }
@@ -867,6 +876,12 @@ const server = http.createServer(async (req, res) => {
         patch.target_duration_sec = mn * 60; // rétro-compat
       }
       const isHHMM = s => typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
+      // Heures de publication explicites (nb d'heures = nb de vidéos/jour). Triées, dédupliquées, plafonnées.
+      if (Array.isArray(b.publish_times)) {
+        const times = [...new Set(b.publish_times.filter(isHHMM))].sort().slice(0, 8);
+        patch.publish_times = times;
+        if (times.length) patch.max_posts_per_day = Math.max(1, Math.min(10, times.length)); // cohérence cadence
+      }
       if (isHHMM(b.publish_time_start)) patch.publish_time_start = b.publish_time_start;
       if (isHHMM(b.publish_time_end)) patch.publish_time_end = b.publish_time_end;
       if (isHHMM(b.publish_time_start)) patch.daily_publish_time = b.publish_time_start; // rétro-compat

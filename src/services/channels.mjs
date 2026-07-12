@@ -42,7 +42,7 @@ export async function setActiveChannel(id) {
 }
 export async function updateChannel(id, patch) {
   const p = {};
-  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'yt_handle', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ads_enabled', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'coach_enabled', 'max_posts_per_day', 'coach_state', 'coach_updated_at', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'video_text', 'background_mode', 'slideshow_count', 'reuse_gap', 'discord_notifs', 'daily_report_hour', 'stats_daily',
+  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'yt_handle', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'publish_times', 'utm_base', 'ads_enabled', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'coach_enabled', 'max_posts_per_day', 'coach_state', 'coach_updated_at', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'video_text', 'background_mode', 'slideshow_count', 'reuse_gap', 'discord_notifs', 'daily_report_hour', 'stats_daily',
     'objective', 'product_desc', 'affiliate_url', 'affiliate_label', 'inspiration_urls', 'playbook', 'playbook_updated_at',
     'emotion_palette', 'emotion_cursor', 'emotion_palette_updated_at', 'emotion_from_image', 'seo_plan', 'seo_plan_updated_at'];
   for (const k of plain) if (k in patch) p[k] = patch[k];
@@ -106,6 +106,7 @@ export function channelPublicView(ch) {
     settings: { daily_publish_time: ch.daily_publish_time, target_duration_sec: ch.target_duration_sec,
       target_min_sec: ch.target_min_sec ?? ch.target_duration_sec ?? 5400, target_max_sec: ch.target_max_sec ?? ch.target_duration_sec ?? 5400,
       publish_time_start: (ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00')), publish_time_end: (ch.publish_time_end || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00')),
+      publish_times: Array.isArray(ch.publish_times) ? ch.publish_times : [],
       utm_base: ch.utm_base, ads_enabled: ch.ads_enabled === true, ad_frequency_min: ch.ad_frequency_min, ad_duration_sec: ch.ad_duration_sec, ad_placement: ch.ad_placement || { x: 0.68, y: 0.55, w: 0.28, h: 0.40 }, ad_intro: ch.ad_intro !== false, ad_outro: ch.ad_outro !== false, background_mode: ch.background_mode || 'slideshow', slideshow_count: ch.slideshow_count ?? 0, reuse_gap: ch.reuse_gap ?? 30 }
   };
 }

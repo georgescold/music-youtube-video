@@ -167,7 +167,7 @@
   <div class="card">
     <p class="hint" style="margin:-2px 0 14px">L'heure et la durée sont des <b>fourchettes</b> : à chaque vidéo, le système tire une valeur au hasard entre le min et le max (mets la même valeur des deux côtés pour figer).</p>
     <div class="grid2">
-      <div class="field"><label>Fenêtre horaire de génération (début → fin)</label>
+      <div class="field"><label>Fenêtre horaire (mode auto, si aucune heure fixée)</label>
         <div style="display:flex;align-items:center;gap:8px"><input id="f-publish_time_start" type="time" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-publish_time_end" type="time" style="flex:1"></div>
       </div>
       <div class="field"><label>Durée cible (min → max, minutes)</label>
@@ -252,7 +252,12 @@
       <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Si activé : une vidéo est générée chaque jour dans la fenêtre horaire choisie. Si désactivé : rien ne se génère seul, tu génères manuellement via « Générer une vidéo ».</div>
     </div>
     <div id="cron-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:-6px 0 16px 3px;display:none">
-      <div class="field" style="max-width:340px;margin:0"><label>Cadence max (vidéos/jour, plafond du warm-up)</label><input id="f-max_posts_per_day" type="number" min="1" max="10"><div class="hint">La cadence monte progressivement (warm-up) jusqu'à ce plafond selon l'âge et les perfs de la chaîne.</div></div>
+      <div class="field" style="margin:0 0 4px"><label>Heures de publication par jour</label>
+        <div id="pub-times" style="display:flex;flex-direction:column;gap:8px"></div>
+        <button class="btn btn-sec" id="add-time" type="button" style="margin-top:8px">+ Ajouter une heure</button>
+        <div class="hint">Chaque heure = <b>une vidéo publiée</b> ce jour-là → le nombre d'heures = nombre de vidéos/jour. ⚠️ Respecte le quota partagé (~5/jour max sur ce compte Google). Laisse la liste <b>vide</b> pour le mode auto (fenêtre + warm-up ci-dessus/dessous).</div>
+      </div>
+      <div class="field" id="cadence-wrap" style="max-width:340px;margin-top:12px"><label>Cadence max (mode auto)</label><input id="f-max_posts_per_day" type="number" min="1" max="10"><div class="hint">Utilisée seulement si aucune heure fixe n'est définie (montée progressive du warm-up jusqu'à ce plafond).</div></div>
     </div>
     <div class="field"><label>Mode de publication</label>
       <select id="f-publish_mode" style="width:100%">
@@ -332,6 +337,7 @@ async function loadSettings() {
   secretHint('claude_token', s.claude.configured, s.claude.mask);
   $('f-publish_time_start').value = (s.settings.publish_time_start || '18:00').slice(0, 5);
   $('f-publish_time_end').value = (s.settings.publish_time_end || s.settings.publish_time_start || '18:00').slice(0, 5);
+  buildTimes(s.settings.publish_times || []);
   $('f-target_min').value = Math.round((s.settings.target_min_sec || s.settings.target_duration_sec || 5400) / 60);
   $('f-target_max').value = Math.round((s.settings.target_max_sec || s.settings.target_duration_sec || 5400) / 60);
   $('f-utm_base').value = s.settings.utm_base || '';
@@ -407,6 +413,18 @@ function syncCron() { $('cron-opts').style.display = $('f-cron_enabled').checked
 $('f-cron_enabled').addEventListener('change', syncCron);
 function syncCoach() { $('coach-opts').style.display = $('f-coach_enabled').checked ? '' : 'none'; }
 $('f-coach_enabled').addEventListener('change', syncCoach);
+// Heures de publication : liste d'heures (nb d'heures = nb de vidéos/jour). Vide = mode auto (fenêtre + warm-up).
+function collectTimes() { return Array.from(document.querySelectorAll('#pub-times .pt-input')).map(i => i.value).filter(v => /^\d{2}:\d{2}$/.test(v)); }
+function syncTimesMode() { $('cadence-wrap').style.display = collectTimes().length ? 'none' : ''; }
+function addTimeRow(value) {
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:8px';
+  const inp = document.createElement('input'); inp.type = 'time'; inp.className = 'pt-input'; inp.style.flex = '1'; if (value) inp.value = value;
+  const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-sec'; del.textContent = '✕'; del.style.padding = '8px 12px';
+  del.onclick = () => { row.remove(); syncTimesMode(); }; inp.onchange = syncTimesMode;
+  row.appendChild(inp); row.appendChild(del); $('pub-times').appendChild(row); syncTimesMode();
+}
+function buildTimes(times) { $('pub-times').innerHTML = ''; (times || []).forEach(t => addTimeRow(t)); syncTimesMode(); }
+$('add-time').onclick = () => addTimeRow('12:00');
 
 function syncThumb() {
   $('thumb-opts').style.display = $('f-thumbnail_enabled').checked ? '' : 'none';
@@ -422,6 +440,7 @@ $('save').onclick = async () => {
     yt_client_secret: $('f-yt_client_secret').value, yt_refresh_token: $('f-yt_refresh_token').value,
     epidemic_jwt: $('f-epidemic_jwt').value, claude_token: $('f-claude_token').value,
     publish_time_start: $('f-publish_time_start').value, publish_time_end: $('f-publish_time_end').value,
+    publish_times: collectTimes(),
     target_min_min: Number($('f-target_min').value), target_max_min: Number($('f-target_max').value), utm_base: $('f-utm_base').value,
     ads_enabled: $('f-ads_enabled').checked,
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
