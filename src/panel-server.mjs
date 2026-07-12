@@ -20,7 +20,7 @@ import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
 import { deriveEmotions } from './steps/emotions.mjs';
 import { generateSeoPlan } from './steps/seoPlan.mjs';
-import { computeCadence, analyzeAndDecide } from './steps/coach.mjs';
+import { computeCadence, analyzeAndDecide, collectStats } from './steps/coach.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -47,6 +47,7 @@ const MAX_UPLOAD_BYTES = 45 * 1024 * 1024; // marge sous la limite bucket (50 Mo
 const genState = { running: false, videoId: null, phase: null, error: null, cancelled: false, startedAt: null, lastResult: null, log: [] };
 let genTimer = null;
 let coachTimer = null;
+let statsTimer = null;
 let genController = null;
 
 function generateOnce({ dryRun = false, targetSec = null, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null } = {}) {
@@ -148,6 +149,25 @@ async function runCoach({ force = false } = {}) {
     sendDiscord(ch.discord_webhook, { title: '🧠 Rapport du coach — ' + ch.name, description: lines.slice(0, 1800), color: COLORS.info }).catch(() => {});
   }
   return r;
+}
+
+// ── Mise à jour des stats (léger : snapshot vues/rétention -> video_stats). Manuel ou quotidien. ──
+async function refreshStats(ch) {
+  if (!ch) return { ok: false, error: 'aucune chaîne' };
+  const r = await collectStats({ channel: ch, creds: channelCreds(ch).youtube, now: new Date(), log: m => console.log('[stats]', m) }).catch(e => ({ ok: false, error: e.message }));
+  await updateChannel(ch.id, { stats_updated_at: new Date().toISOString() }).catch(() => {});
+  return r;
+}
+// Planifie une MàJ quotidienne des stats (~08:00) pour la chaîne active, si stats_daily est activé.
+async function setupStatsRefresh() {
+  if (statsTimer) clearTimeout(statsTimer);
+  const now = new Date();
+  const at = new Date(now); at.setHours(8, 0, 0, 0); if (at <= now) at.setDate(at.getDate() + 1);
+  statsTimer = setTimeout(async () => {
+    const ch = await getActiveChannel().catch(() => null);
+    if (ch?.stats_daily) { console.log('[stats] MàJ quotidienne'); await refreshStats(ch).catch(e => console.error('[stats]', e.message)); }
+    setupStatsRefresh();
+  }, at - now);
 }
 
 // ── Comptes (email + mot de passe) + session par cookie signe (HMAC). 1er inscrit = proprietaire,
@@ -466,11 +486,16 @@ const server = http.createServer(async (req, res) => {
       const ids = [...new Set(vids.map(v => v.youtube_video_id).filter(Boolean))];
       if (!ids.length) return json(res, { byId: {} });
       let byId = {};
-      try {
-        const stats = await getVideoStats(ids, channelCreds(ch).youtube);
-        byId = Object.fromEntries((stats || []).map(s => [s.id, { views: s.views, likes: s.likes, comments: s.comments }]));
-      } catch (e) { /* dégradé silencieux : l'aperçu s'affiche sans chiffres */ }
+      try { byId = await getVideoStats(ids, channelCreds(ch).youtube) || {}; } // renvoie déjà { [ytId]: {views,likes,comments} }
+      catch (e) { /* dégradé silencieux : l'aperçu s'affiche sans chiffres */ }
       return json(res, { byId });
+    }
+    // Mise à jour manuelle des stats de la chaîne (snapshot -> video_stats).
+    if (req.method === 'POST' && path === '/api/stats/refresh') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { ok: false, error: 'aucune chaîne active' });
+      const r = await refreshStats(ch);
+      return json(res, { ok: r.ok !== false, captured: r.captured || 0, analytics: !!r.analytics, needsReauth: !!r.needsReauth, error: r.error || null });
     }
     // Détail d'une vidéo : rétention/temps de visionnage (Analytics) + paramètres de génération.
     if (req.method === 'GET' && path === '/api/videos/detail') {
@@ -515,9 +540,19 @@ const server = http.createServer(async (req, res) => {
         actions = logs.map(l => ({ step: l.step, status: l.status, message: l.message, created_at: l.created_at, title: byId[l.video_id] || '(vidéo)' }));
       }
       const today = await generatedToday(ch.id).catch(() => 0);
+      // Stats agrégées de la chaîne : dernier snapshot par vidéo (video_stats) -> total vues/likes + rétention moyenne.
+      let stats = { views: 0, likes: 0, retention: null, videos: 0 };
+      try {
+        const snaps = await dbSelect('video_stats', `?channel_id=eq.${ch.id}&order=captured_at.desc&limit=1000&select=video_id,views,likes,avg_view_pct`).catch(() => []);
+        const latest = new Map();
+        for (const s of snaps) if (!latest.has(s.video_id)) latest.set(s.video_id, s); // 1re occurrence = plus récente
+        let rSum = 0, rN = 0;
+        for (const s of latest.values()) { stats.views += s.views || 0; stats.likes += s.likes || 0; if (s.avg_view_pct != null) { rSum += s.avg_view_pct; rN++; } }
+        stats.videos = latest.size; stats.retention = rN ? Math.round(rSum / rN) : null;
+      } catch (e) {}
       return json(res, {
-        channel: { name: ch.name, cron_enabled: !!ch.cron_enabled, publish_mode: ch.publish_mode || 'review', max_posts_per_day: ch.max_posts_per_day || 1, publish_time_start: ch.publish_time_start || null, publish_time_end: ch.publish_time_end || null },
-        counts, today, recent: vids.slice(0, 6), actions
+        channel: { name: ch.name, cron_enabled: !!ch.cron_enabled, publish_mode: ch.publish_mode || 'review', max_posts_per_day: ch.max_posts_per_day || 1, publish_time_start: ch.publish_time_start || null, publish_time_end: ch.publish_time_end || null, stats_daily: ch.stats_daily === true, stats_updated_at: ch.stats_updated_at || null },
+        counts, today, recent: vids.slice(0, 6), actions, stats
       });
     }
     if (req.method === 'GET' && path === '/api/videos/status') {
@@ -702,6 +737,7 @@ const server = http.createServer(async (req, res) => {
       if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       if (typeof b.coach_enabled === 'boolean') patch.coach_enabled = b.coach_enabled;
+      if (typeof b.stats_daily === 'boolean') patch.stats_daily = b.stats_daily;
       if (b.max_posts_per_day != null) patch.max_posts_per_day = Math.max(1, Math.min(10, Number(b.max_posts_per_day) || 1));
       if (typeof b.emotion_from_image === 'boolean') patch.emotion_from_image = b.emotion_from_image;
       if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
@@ -722,6 +758,7 @@ const server = http.createServer(async (req, res) => {
       await propagateSharedCreds(patch).catch(() => {});
       // Si la fenêtre horaire ou l'interrupteur du CRON a changé, on reprogramme.
       if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch || 'max_posts_per_day' in patch) setupScheduler().catch(() => {});
+      if ('stats_daily' in patch) setupStatsRefresh().catch(() => {});
       // Reprise auto : un jeton Epidemic frais vient d'être collé -> si des vidéos avaient échoué faute d'Epidemic,
       // on nettoie ces tentatives mortes et on relance une génération automatiquement.
       let resumed = false;
@@ -820,6 +857,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Panel sur http://${HOST}:${PORT}`);
   setupScheduler().catch(e => console.error('[scheduler] init KO', e.message));
+  setupStatsRefresh().catch(e => console.error('[stats] init KO', e.message));
   setupCoach().catch(e => console.error('[coach] init KO', e.message));
   // Nettoyage des générations orphelines (interrompues par un redémarrage) -> marquées échec.
   dbPatch('videos', 'status=in.(curating,downloading,rendering,uploading)', { status: 'failed', error: 'interrompu par un redémarrage du serveur' })

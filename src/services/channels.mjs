@@ -74,6 +74,8 @@ export function channelPublicView(ch) {
     publish_mode: ch.publish_mode || 'review',
     cron_enabled: !!ch.cron_enabled,
     coach_enabled: !!ch.coach_enabled,
+    stats_daily: ch.stats_daily === true,
+    stats_updated_at: ch.stats_updated_at || null,
     max_posts_per_day: ch.max_posts_per_day || 1,
     coach_state: ch.coach_state || null,
     coach_updated_at: ch.coach_updated_at || null,
