@@ -242,10 +242,13 @@
     </div>
     <div class="field"><label>Mode de publication</label>
       <select id="f-publish_mode" style="width:100%">
-        <option value="review">Brouillon + validation manuelle (recommandé)</option>
-        <option value="auto">Auto-publish (public automatiquement)</option>
+        <option value="review">Relecture — non répertorié, tu valides avant publication</option>
+        <option value="auto">Publication directe — public tout de suite, sans validation</option>
       </select>
-      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">En « auto », le CRON publie directement. ⚠️ Le passage en public peut être limité tant que le projet OAuth Google n'est pas audité.</div>
+      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">
+        <b>Relecture</b> : la vidéo arrive en <b>non répertorié</b> (accessible par lien), tu la relis puis cliques « Valider &amp; publier ».<br>
+        <b>Publication directe</b> : la vidéo est mise <b>directement en public</b>, sans passer par le non-répertorié ni par la validation. Idéal pour une chaîne 100 % automatique.
+      </div>
     </div>
     <div class="card-head" style="margin-top:8px">
       <div><div class="card-title" style="font-size:13px">Webhook Discord</div><div class="card-desc">Reçoit : vidéos postées, erreurs, rapport quotidien.</div></div>

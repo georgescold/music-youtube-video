@@ -196,14 +196,16 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       position: i, start_sec: tracklist[i] ? hmsToSec(tracklist[i].stamp) : 0, length_sec: durationSec(t)
     }))).catch(e => logStep('tracks', 'warn', e.message));
 
-    // 6. Upload YouTube (brouillon prive) — dernier point d'annulation (après, la vidéo est en ligne).
+    // 6. Upload YouTube — dernier point d'annulation (après, la vidéo est en ligne).
+    // Mode "auto" -> publiée DIRECTEMENT en public (pas de non-répertorié) ; mode "validation" -> non-répertorié à relire.
+    const autoPublish = channel?.publish_mode === 'auto';
     ck();
     if (!dryRun) {
       await setStatus('uploading');
       await logStep('upload', 'start');
       const uploaded = await uploadVideo({
         filePath: outPath, title: meta.title, description: meta.description,
-        tags: meta.tags, privacyStatus: 'unlisted', creds: ytCreds
+        tags: meta.tags, privacyStatus: autoPublish ? 'public' : 'unlisted', creds: ytCreds
       });
       youtubeId = uploaded.id;
       youtubeUrl = 'https://www.youtube.com/watch?v=' + youtubeId;
@@ -235,11 +237,13 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       } catch (e) { await logStep('thumbnail', 'warn', e.message); }
     }
 
-    // Mode de publication : "auto" -> passe la vidéo en public ; sinon -> brouillon à valider.
+    // Mode "auto" : la vidéo est déjà en public (uploadée ainsi). On force en sécurité + on marque publiée.
+    // Mode "validation" : reste en non-répertorié, en attente de relecture.
     let finalStatus = 'pending_review';
-    if (!dryRun && youtubeId && channel?.publish_mode === 'auto') {
-      try { await setPrivacyStatus(youtubeId, 'public', ytCreds); finalStatus = 'published'; await logStep('publish', 'ok', 'public (auto)'); }
-      catch (e) { await logStep('publish', 'warn', e.message); }
+    if (!dryRun && youtubeId && autoPublish) {
+      finalStatus = 'published';
+      try { await setPrivacyStatus(youtubeId, 'public', ytCreds); } catch (e) { await logStep('publish', 'warn', e.message); }
+      await logStep('publish', 'ok', 'publiée directement en public (sans validation)');
     }
 
     await setStatus(finalStatus, {
