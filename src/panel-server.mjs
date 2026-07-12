@@ -52,18 +52,18 @@ let statsTimer = null;
 let weeklyTimer = null;
 let genController = null;
 
-function generateOnce({ dryRun = false, targetSec = null, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null } = {}) {
+function generateOnce({ dryRun = false, targetSec = null, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null, channelId = null } = {}) {
   if (genState.running) return false;
   const controller = { cancelled: false, child: null };
   genController = controller;
-  Object.assign(genState, { running: true, error: null, cancelled: false, phase: 'démarrage', startedAt: Date.now(), videoId: null, log: [] });
+  Object.assign(genState, { running: true, error: null, cancelled: false, phase: 'démarrage', startedAt: Date.now(), videoId: null, channelId, log: [] });
   const pushLog = (m) => {
     const line = { t: Date.now(), m: String(m) };
     genState.phase = line.m; genState.log.push(line);
     if (genState.log.length > 600) genState.log.shift();
   };
   pushLog('démarrage de la génération…' + (titleOverride ? ` (titre imposé)` : '') + (targetSec ? ` (durée visée ${Math.round(targetSec / 60)} min)` : ''));
-  runPipeline({ dryRun, targetSec, titleOverride, backgroundAssetId, thumbnailAssetId, controller, log: pushLog })
+  runPipeline({ dryRun, targetSec, titleOverride, backgroundAssetId, thumbnailAssetId, channelId, controller, log: pushLog })
     .then(r => { Object.assign(genState, { running: false, lastResult: r, videoId: r.videoId, phase: 'terminé' }); pushLog('✅ terminé — vidéo prête'); })
     .catch(e => {
       const cancelled = controller.cancelled || /cancel/i.test(String(e.message || e));
@@ -95,29 +95,57 @@ async function generatedToday(chId) {
   return rows.length;
 }
 
+// ── CERVEAU D'AUTOMATISATION MULTI-CHAÎNES ──
+// Quota YouTube = PAR PROJET GOOGLE (client OAuth), donc PARTAGÉ par toutes les chaînes du même client.
+// Un upload coûte ~1600 unités / 10000 par jour -> ~5-6 vidéos/jour cumulées. On plafonne pour éviter quotaExceeded.
+const DAILY_UPLOAD_BUDGET = Number(process.env.DAILY_UPLOAD_BUDGET) || 5;
+const BRAIN_TICK_MS = 7 * 60 * 1000;
+let quotaNotified = {}; // 'client|YYYY-MM-DD' -> déjà notifié (une alerte quota/jour/client)
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+// Uploads RÉUSSIS aujourd'hui, regroupés par client OAuth (le quota Google est partagé au niveau du client).
+async function uploadsTodayByClient(chans) {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const vids = await dbSelect('videos', `?created_at=gte.${start.toISOString()}&youtube_video_id=not.is.null&select=channel_id`).catch(() => []);
+  const clientOf = {}; for (const c of chans) clientOf[c.id] = c.yt_client_id || 'none';
+  const byClient = {};
+  for (const v of vids) { const cl = clientOf[v.channel_id] || 'none'; byClient[cl] = (byClient[cl] || 0) + 1; }
+  return byClient;
+}
+
+// Le cerveau : tourne en continu, évalue TOUTES les chaînes en CRON, respecte fenêtre + warm-up (par chaîne)
+// + budget quota (partagé par client), et lance UNE génération à la fois (sérialisée). Alerte Discord si blocage.
 async function setupScheduler() {
   if (genTimer) clearTimeout(genTimer);
-  const ch = await getActiveChannel().catch(() => null);
-  if (!ch?.cron_enabled) { console.log('[scheduler] CRON désactivé — aucune génération automatique programmée.'); return; }
-  const { published, ageDays } = await channelMaturity(ch.id);
-  const cadence = computeCadence({ publishedCount: published, ageDays, maxPerDay: ch.max_posts_per_day || 1 });
-  const doneToday = await generatedToday(ch.id);
-  const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
-  const end = ch.publish_time_end || start;
+  genTimer = setTimeout(async () => { await brainTick().catch(e => console.error('[cerveau]', e.message)); setupScheduler(); }, BRAIN_TICK_MS);
+  brainTick().catch(e => console.error('[cerveau]', e.message)); // évalue aussi tout de suite
+}
+async function brainTick() {
+  const all = await listChannels().catch(() => []);
+  const chans = all.filter(c => c.cron_enabled);
+  if (!chans.length) return;
+  if (genState.running) return; // une seule génération à la fois -> protège le quota et les ressources
+  const byClient = await uploadsTodayByClient(all);
   const now = new Date();
-  const { startDt, endDt } = windowDates(start, end, now);
-  let at;
-  if (doneToday < cadence && now < endDt) at = pickInRange(new Date(Math.max(now, startDt)), endDt);           // encore un créneau aujourd'hui
-  else at = pickInRange(new Date(startDt.getTime() + 86400000), new Date(endDt.getTime() + 86400000));         // demain
-  const wait = Math.max(1000, at - now);
-  genTimer = setTimeout(async () => {
-    const cur = await getActiveChannel().catch(() => null);
-    if (cur?.cron_enabled && (await generatedToday(cur.id)) < computeCadence({ publishedCount: published, ageDays, maxPerDay: cur.max_posts_per_day || 1 })) {
-      console.log('[scheduler] génération (cadence ' + cadence + '/j)'); generateOnce({ dryRun: false });
-    } else console.log('[scheduler] créneau sauté (CRON off ou quota du jour atteint).');
-    setupScheduler();
-  }, wait);
-  console.log(`[scheduler] cadence ${cadence}/j (${published} publiées, ${ageDays}j) · déjà ${doneToday} aujourd'hui · prochaine ${at.toLocaleString('fr-FR')} (fenêtre ${start}–${end})`);
+  const todayKey = now.toISOString().slice(0, 10);
+  for (const ch of shuffle(chans)) { // mélange = équité entre chaînes
+    const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
+    const end = ch.publish_time_end || start;
+    const { startDt, endDt } = windowDates(start, end, now);
+    if (now < startDt || now > endDt) continue;                        // hors fenêtre horaire de la chaîne
+    const { published, ageDays } = await channelMaturity(ch.id);
+    const cadence = computeCadence({ publishedCount: published, ageDays, maxPerDay: ch.max_posts_per_day || 1 });
+    if ((await generatedToday(ch.id)) >= cadence) continue;            // cadence du jour (warm-up) de CETTE chaîne atteinte
+    const client = ch.yt_client_id || 'none';
+    if ((byClient[client] || 0) >= DAILY_UPLOAD_BUDGET) {              // budget quota PARTAGÉ atteint
+      const k = client + '|' + todayKey;
+      if (!quotaNotified[k]) { quotaNotified[k] = true; notifyChannel(ch, 'quota', { title: '🚦 Quota YouTube du jour atteint', description: `Le budget d'uploads du jour (${DAILY_UPLOAD_BUDGET}) — partagé par les chaînes de ce compte Google — est atteint. Les générations reprendront demain. Pour en poster plus, demande une hausse de quota côté Google Cloud.`, color: COLORS.warn }); }
+      continue;
+    }
+    console.log(`[cerveau] génération « ${ch.name} » — warm-up ${cadence}/j · client à ${byClient[client] || 0}/${DAILY_UPLOAD_BUDGET}`);
+    generateOnce({ dryRun: false, channelId: ch.id });
+    return; // une génération par tick (sérialisée)
+  }
 }
 
 // CRON intelligent : analyse quotidienne des stats + décisions + rapport Discord.
@@ -168,17 +196,16 @@ async function setupStatsRefresh() {
   const now = new Date();
   const at = new Date(now); at.setHours(hour, 0, 0, 0); if (at <= now) at.setDate(at.getDate() + 1);
   statsTimer = setTimeout(async () => {
-    const ch = await getActiveChannel().catch(() => null);
-    if (ch) {
-      // On rafraîchit les stats si la MàJ auto est activée OU si une notif quotidienne en a besoin.
+    // Multi-chaînes : MàJ des stats + rapport quotidien pour CHAQUE chaîne (pas seulement l'active).
+    for (const ch of await listChannels().catch(() => [])) {
       const wantsStatsNotif = ch.discord_webhook && (notifEnabled(ch, 'daily_report') || notifEnabled(ch, 'viral') || notifEnabled(ch, 'milestones'));
-      if (ch.stats_daily || wantsStatsNotif) { console.log('[stats] MàJ quotidienne'); await refreshStats(ch).catch(e => console.error('[stats]', e.message)); }
+      if (ch.stats_daily || wantsStatsNotif) { console.log('[stats] MàJ quotidienne — ' + ch.name); await refreshStats(ch).catch(e => console.error('[stats]', e.message)); }
       await sendDailyDigest(ch).catch(e => console.error('[digest]', e.message));
     }
     setupStatsRefresh();
   }, at - now);
 }
-// Récap hebdomadaire (lundi ~09:00) pour la chaîne active.
+// Récap hebdomadaire (lundi ~09:00) pour TOUTES les chaînes.
 async function setupWeeklyRecap() {
   if (weeklyTimer) clearTimeout(weeklyTimer);
   const now = new Date();
@@ -186,8 +213,7 @@ async function setupWeeklyRecap() {
   let add = (1 - at.getDay() + 7) % 7; if (add === 0 && at <= now) add = 7; // prochain lundi
   at.setDate(at.getDate() + add);
   weeklyTimer = setTimeout(async () => {
-    const ch = await getActiveChannel().catch(() => null);
-    if (ch) await sendWeeklyRecap(ch).catch(e => console.error('[recap]', e.message));
+    for (const ch of await listChannels().catch(() => [])) await sendWeeklyRecap(ch).catch(e => console.error('[recap]', e.message));
     setupWeeklyRecap();
   }, at - now);
 }

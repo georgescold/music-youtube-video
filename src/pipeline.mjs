@@ -10,7 +10,7 @@ import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaul
 import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus, setThumbnail, deleteVideo } from './services/youtube.mjs';
-import { getActiveChannel, updateChannel, channelCreds } from './services/channels.mjs';
+import { getActiveChannel, getChannel, updateChannel, channelCreds } from './services/channels.mjs';
 import { analyzeImage } from './services/vision.mjs';
 import { chooseEmotionIndex } from './steps/coach.mjs';
 import { sendDiscord, notifyChannel, COLORS } from './services/notify.mjs';
@@ -27,9 +27,10 @@ async function fetchAssetFile(asset, dir) {
   return { path, isVideo: (asset.mime_type || '').startsWith('video') };
 }
 
-export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null, controller, log = () => {} } = {}) {
+export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null, channelId = null, controller, log = () => {} } = {}) {
   const ck = () => { if (controller?.cancelled) throw new Error('cancelled'); }; // point d'annulation entre étapes
-  const channel = await getActiveChannel();
+  // Chaîne CIBLE : soit imposée (cerveau multi-chaînes), soit la chaîne active (génération manuelle).
+  const channel = channelId ? await getChannel(channelId) : await getActiveChannel();
   const chanFilter = channel ? `&channel_id=eq.${channel.id}` : '';
   const references = await dbSelect('reference_songs', '?active=eq.true' + chanFilter);
   const assets = await dbSelect('assets', '?active=eq.true' + chanFilter);

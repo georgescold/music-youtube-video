@@ -9,6 +9,7 @@ export const NOTIF_TYPES = {
   gen_started: { label: 'Génération démarrée', def: false, group: 'Production' },
   epidemic_auth: { label: 'Epidemic déconnecté / reconnecté', def: true, group: 'Santé' },
   youtube_auth: { label: 'YouTube déconnecté (jeton expiré)', def: true, group: 'Santé' },
+  quota: { label: 'Quota d\'upload YouTube atteint', def: true, group: 'Santé' },
   backgrounds_low: { label: 'Images de fond bientôt épuisées', def: true, group: 'Santé' },
   daily_report: { label: 'Rapport quotidien (vues, top, rétention)', def: true, group: 'Performance' },
   viral: { label: 'Vidéo qui perce 🚀', def: true, group: 'Performance' },
