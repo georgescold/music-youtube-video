@@ -129,7 +129,7 @@ export function adIntervals(durationSec, freqMin, durSec, { intro = true, outro 
 }
 
 // backgrounds: [{ path, isVideo }] · ads: [{ path, isVideo }]
-export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, adIntro = true, adOutro = true, placement, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, controller, log = () => {} }) {
+export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, adIntro = true, adOutro = true, placement, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, titleText = '', videoText = false, textFont = 'playfair', controller, log = () => {} }) {
   const D = Math.max(1, Math.round(probeDuration(audioPath)));
   const inputs = [];
   let idx = 0;
@@ -168,6 +168,19 @@ export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPa
   } else {
     const inIdx = addInput(['-f', 'lavfi', '-t', String(D), '-i', `color=c=0x14100f:s=${width}x${height}:r=${fps}`]);
     filters.push(`[${inIdx}:v]setsar=1[bg]`); bgLabel = 'bg';
+  }
+
+  // ── Titre incrusté sur le fond (option par chaîne) : même style que la miniature, centré, ombré ──
+  const titleRaw = stripPlaylistTag(titleText);
+  if (videoText && titleRaw) {
+    const lines = wrapLines(titleRaw, 20);
+    const txtFile = join(dirname(outPath), 'video-text.txt');
+    writeFileSync(txtFile, lines.join('\n'), 'utf8');
+    const fontsize = lines.length >= 3 ? 66 : (lines.length === 2 ? 80 : 92);
+    // Boîte semi-transparente DERRIÈRE le texte seulement (pas tout l'écran) + ombre = lisible sur toute image.
+    filters.push(`[${bgLabel}]drawtext=fontfile='${escFilter(fontPathFor(textFont))}':textfile='${escFilter(txtFile)}':fontcolor=white:fontsize=${fontsize}:line_spacing=16:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.42:boxborderw=28:shadowcolor=black@0.6:shadowx=2:shadowy=2[bgt]`);
+    bgLabel = 'bgt';
+    log(`titre incrusté sur la vidéo (${lines.length} ligne(s), police ${textFont})`);
   }
 
   // ── Pubs : chaque pub a SA position (ad.placement), fenêtres réparties, assets en rotation ──

@@ -145,35 +145,9 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     await logStep('download', 'ok');
     ck();
 
-    // 3. Montage
-    await setStatus('rendering');
-    await logStep('render', 'start');
+    // 3. Métadonnées (titre + description) — AVANT le montage, car le titre peut être incrusté sur la vidéo.
     const audioPath = await concatAudio(withPaths.map(t => t.path), join(workDir, 'mix.mp3'), { controller });
     const tracklist = buildTracklist(withPaths);
-    const ads = [];
-    for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
-    const outPath = join(workDir, 'video.mp4');
-    ck();
-    await renderVideo({
-      backgrounds, ads, audioPath, outPath, log, controller,
-      adFrequencyMin: channel?.ad_frequency_min ?? 10,
-      adDurationSec: channel?.ad_duration_sec ?? 8,
-      adIntro: channel?.ad_intro !== false,
-      adOutro: channel?.ad_outro !== false,
-      placement: channel?.ad_placement
-    });
-    ck();
-    const durSec = Math.round(probeDuration(outPath));
-    await logStep('render', 'ok', `${Math.round(durSec / 60)} min · fonds:${backgrounds.length} · pubs:${ads.length}`);
-
-    // 4. Tracklist en base
-    await dbInsert('video_tracks', withPaths.map((t, i) => ({
-      video_id: vid, epidemic_track_id: t.id, title: t.title,
-      artist: (t.credits || []).find(c => c.role === 'MAIN_ARTIST')?.artist?.name || null,
-      position: i, start_sec: tracklist[i] ? hmsToSec(tracklist[i].stamp) : 0, length_sec: durationSec(t)
-    }))).catch(e => logStep('tracks', 'warn', e.message));
-
-    // 5. Metadonnees
     await logStep('metadata', 'start');
     const utmBase = channel?.utm_base || 'https://compaatible.app/';
     const utmUrl = utmBase + (utmBase.includes('?') ? '&' : '?') + 'utm_source=youtube&utm_campaign=aubonmoment&utm_content=' + vid;
@@ -193,6 +167,34 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', titleOverride, log
     });
     await logStep('metadata', 'ok', meta.title);
+    ck();
+
+    // 4. Montage (le titre est incrusté sur le fond de la vidéo si l'option est activée pour la chaîne)
+    await setStatus('rendering');
+    await logStep('render', 'start');
+    const ads = [];
+    for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
+    const outPath = join(workDir, 'video.mp4');
+    ck();
+    await renderVideo({
+      backgrounds, ads, audioPath, outPath, log, controller,
+      adFrequencyMin: channel?.ad_frequency_min ?? 10,
+      adDurationSec: channel?.ad_duration_sec ?? 8,
+      adIntro: channel?.ad_intro !== false,
+      adOutro: channel?.ad_outro !== false,
+      placement: channel?.ad_placement,
+      titleText: meta.title, videoText: channel?.video_text === true, textFont: channel?.thumbnail_font || 'playfair'
+    });
+    ck();
+    const durSec = Math.round(probeDuration(outPath));
+    await logStep('render', 'ok', `${Math.round(durSec / 60)} min · fonds:${backgrounds.length} · pubs:${ads.length}`);
+
+    // 5. Tracklist en base
+    await dbInsert('video_tracks', withPaths.map((t, i) => ({
+      video_id: vid, epidemic_track_id: t.id, title: t.title,
+      artist: (t.credits || []).find(c => c.role === 'MAIN_ARTIST')?.artist?.name || null,
+      position: i, start_sec: tracklist[i] ? hmsToSec(tracklist[i].stamp) : 0, length_sec: durationSec(t)
+    }))).catch(e => logStep('tracks', 'warn', e.message));
 
     // 6. Upload YouTube (brouillon prive) — dernier point d'annulation (après, la vidéo est en ligne).
     ck();

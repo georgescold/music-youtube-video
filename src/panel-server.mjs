@@ -643,6 +643,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.emotion_from_image === 'boolean') patch.emotion_from_image = b.emotion_from_image;
       if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
       if (typeof b.thumbnail_text === 'boolean') patch.thumbnail_text = b.thumbnail_text;
+      if (typeof b.video_text === 'boolean') patch.video_text = b.video_text;
       if (['playfair', 'inter', 'cormorant'].includes(b.thumbnail_font)) patch.thumbnail_font = b.thumbnail_font;
       if (b.background_mode === 'single' || b.background_mode === 'slideshow') patch.background_mode = b.background_mode;
       if (b.slideshow_count != null) patch.slideshow_count = Math.max(0, Math.min(100, Number(b.slideshow_count) || 0));
