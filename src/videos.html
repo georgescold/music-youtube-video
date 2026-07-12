@@ -209,6 +209,7 @@
   </details>
   <div class="genbar-row" style="display:flex;align-items:center;gap:14px;margin:-8px 0 24px;min-height:1.3em">
     <div class="genbar" id="genbar" style="margin:0"></div>
+    <button class="btn-primary" id="yt-reconnect" style="display:none">🔗 Reconnecter YouTube</button>
     <button class="btn-sec btn-cancel" id="cancel" style="display:none">Annuler</button>
   </div>
 
@@ -277,14 +278,34 @@ function buildPicker(container, imgs, onPick) {
   } catch (e) {}
 })();
 
+// Reconnexion YouTube en 1 clic (au bon moment) : ouvre l'OAuth de la chaîne active, puis relance la génération.
+const ytReconnectBtn = document.getElementById('yt-reconnect');
+const YT_AUTH_RE = /refresh token|client secret|youtube déconnect|YouTube n'est plus|401 Unauthorized|invalid_grant|compte YouTube/i;
+function showYtReconnect(msg) {
+  genbar.className = 'genbar err'; genbar.textContent = msg;
+  ytReconnectBtn.style.display = ''; genBtn.disabled = false;
+}
+ytReconnectBtn.onclick = () => { window.open('/oauth/youtube/start', 'ytoauth', 'width=520,height=700'); ytReconnectBtn.textContent = '⏳ Autorise dans la fenêtre Google…'; };
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.ytoauth === true && ytReconnectBtn.style.display !== 'none') {
+    ytReconnectBtn.style.display = 'none'; ytReconnectBtn.textContent = '🔗 Reconnecter YouTube';
+    genbar.className = 'genbar'; genbar.textContent = '✅ YouTube reconnecté — relance de la génération…';
+    setTimeout(() => genBtn.onclick(), 900);
+  }
+});
+
 genBtn.onclick = async () => {
-  genBtn.disabled = true;
+  genBtn.disabled = true; ytReconnectBtn.style.display = 'none';
   const body = { minMin: Number(document.getElementById('dmin').value), maxMin: Number(document.getElementById('dmax').value) };
   if (optTitle.value.trim()) body.title = optTitle.value.trim();
   if (selectedBgId) body.backgroundAssetId = selectedBgId;
   if (selectedThumbId) body.thumbnailAssetId = selectedThumbId;
   const d = await (await fetch('/api/videos/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
-  if (!d.ok) { genbar.className = 'genbar err'; genbar.textContent = d.error; genBtn.disabled = false; return; }
+  if (!d.ok) {
+    if (d.reconnect === 'youtube' || YT_AUTH_RE.test(d.error || '')) showYtReconnect(d.error);
+    else { genbar.className = 'genbar err'; genbar.textContent = d.error; genBtn.disabled = false; }
+    return;
+  }
   startPolling();
 };
 
@@ -311,6 +332,7 @@ async function pollStatus() {
     genBtn.disabled = false;
     cancelBtn.style.display = 'none';
     if (s.cancelled) { genbar.className = 'genbar'; genbar.textContent = 'Génération annulée.'; }
+    else if (s.error && YT_AUTH_RE.test(s.error)) { showYtReconnect('Échec YouTube : ' + s.error); }
     else if (s.error) { genbar.className = 'genbar err'; genbar.textContent = 'Échec : ' + s.error; }
     else if (s.phase === 'terminé') { genbar.className = 'genbar'; genbar.textContent = 'Vidéo générée — à valider ci-dessous.'; }
     else genbar.textContent = '';

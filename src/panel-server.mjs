@@ -698,6 +698,13 @@ const server = http.createServer(async (req, res) => {
         notifyChannel(preCh, 'epidemic_auth', { title: '🔑 Epidemic déconnecté', description: EPIDEMIC_AUTH_MESSAGE, color: COLORS.error });
         return json(res, { ok: false, error: EPIDEMIC_AUTH_MESSAGE });
       }
+      // Pré-check YouTube : si le compte de la chaîne n'est plus autorisé, on renvoie un flag pour proposer la
+      // reconnexion en 1 clic (au lieu de gâcher tout le montage puis échouer à l'upload).
+      const preYt = await testYouTube(channelCreds(preCh).youtube || {}).catch(() => ({ ok: false, detail: '' }));
+      if (!preYt.ok) {
+        notifyChannel(preCh, 'youtube_auth', { title: '🔴 YouTube déconnecté', description: 'Le compte YouTube de « ' + (preCh?.name || '') + ' » n\'est plus autorisé. Reconnecte-le pour reprendre les générations.', color: COLORS.error });
+        return json(res, { ok: false, reconnect: 'youtube', error: 'YouTube n\'est plus autorisé pour cette chaîne' + (preYt.detail ? ' (' + preYt.detail + ')' : '') + '. Reconnecte-la en un clic 👇' });
+      }
       // Durée en fourchette (minutes) fournie à la génération manuelle -> tirage aléatoire ; sinon fourchette de la chaîne.
       const b = await readJsonBody(req).catch(() => ({}));
       let targetSec = null;
