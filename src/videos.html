@@ -542,12 +542,20 @@ async function loadHome() {
     // Handlers : MàJ manuelle des stats + toggle quotidien.
     const rBtn = document.getElementById('stats-refresh');
     if (rBtn) rBtn.onclick = async () => {
-      rBtn.disabled = true; rBtn.textContent = '⏳ Mise à jour…';
+      const orig = rBtn.textContent; rBtn.disabled = true; rBtn.textContent = '⏳ Mise à jour…';
+      const upd = document.getElementById('stats-updated');
+      let msg = 'Erreur réseau.', captured = 0;
       try {
         const r = await (await fetch('/api/stats/refresh', { method: 'POST' })).json();
-        if (!r.ok && r.needsReauth) alert('Ré-autorise l\'accès YouTube (scope Analytics) dans les Paramètres pour récupérer la rétention.');
+        captured = r.captured || 0;
+        if (r.needsReauth) msg = '⚠️ Ré-autorise l\'accès YouTube (Paramètres) pour la rétention.';
+        else if (r.ok === false) msg = 'Échec : ' + (r.error || 'inconnu');
+        else if (!captured) msg = 'Aucune vidéo en ligne sur cette chaîne à analyser.';
+        else msg = '✓ ' + captured + ' vidéo(s) — stats mises à jour';
       } catch (e) {}
-      await loadHome(); await load();
+      if (upd) upd.textContent = msg;
+      rBtn.disabled = false; rBtn.textContent = orig;
+      if (captured) { await load(); setTimeout(loadHome, 2200); } // rafraîchit cartes + numéros agrégés
     };
     const aTog = document.getElementById('stats-auto');
     if (aTog) aTog.onchange = async () => {
