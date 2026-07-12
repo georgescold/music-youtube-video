@@ -38,4 +38,12 @@
   background-repeat: no-repeat; background-position: right 11px center;
 }
 .chan-switch:hover { border-color: var(--color-ink); }
+.chan-new-btn {
+  font-family: inherit; font-size: 17px; font-weight: 600; line-height: 1; color: var(--color-ink);
+  background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 100px;
+  width: 30px; height: 30px; padding: 0; cursor: pointer; outline: none; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.chan-new-btn:hover { border-color: var(--color-ink); }
+.chan-new-btn:disabled { opacity: .5; cursor: default; }
 :root[data-theme="dark"] .chan-switch { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaaaaa' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>"); }

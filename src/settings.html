@@ -79,7 +79,6 @@
   <h2>Chaîne active</h2>
   <div class="chanbar">
     <select id="chan-select"></select>
-    <button class="btn btn-sec" id="chan-new">+ Nouvelle chaîne</button>
   </div>
   <div class="field" style="max-width:520px"><label>Nom de la chaîne</label>
     <div style="display:flex;gap:8px;align-items:center">
@@ -289,7 +288,6 @@ async function loadChannels() {
   for (const c of d.channels) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name + (c.is_active ? '' : ''); if (c.id === d.activeId) o.selected = true; sel.appendChild(o); }
 }
 $('chan-select').onchange = async () => { await fetch('/api/channels/select', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: $('chan-select').value }) }); location.reload(); };
-$('chan-new').onclick = async () => { const name = prompt('Nom de la nouvelle chaîne ?'); if (!name) return; await fetch('/api/channels/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }); location.reload(); };
 
 function secretHint(id, configured, m) {
   $('f-' + id).placeholder = configured ? '•••• configuré — laisse vide pour ne pas changer' : 'non configuré';

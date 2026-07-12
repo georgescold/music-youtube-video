@@ -26,6 +26,21 @@
 (function initChannelSwitch() {
   var sel = document.getElementById('chan-switch');
   if (!sel) return;
+  // Petit bouton "+" collé au sélecteur : créer une nouvelle chaîne au moment de changer de chaîne.
+  var addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'chan-new-btn';
+  addBtn.textContent = '+';
+  addBtn.title = 'Créer une nouvelle chaîne';
+  addBtn.addEventListener('click', function () {
+    var name = prompt('Nom de la nouvelle chaîne ?');
+    if (!name || !name.trim()) return;
+    addBtn.disabled = true;
+    fetch('/api/channels/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) })
+      .then(function () { location.reload(); })
+      .catch(function () { addBtn.disabled = false; });
+  });
+  sel.parentNode.insertBefore(addBtn, sel.nextSibling);
   fetch('/api/channels').then(function (r) { return r.json(); }).then(function (d) {
     sel.innerHTML = '';
     (d.channels || []).forEach(function (c) {
