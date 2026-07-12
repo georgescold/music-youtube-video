@@ -31,15 +31,8 @@
   addBtn.type = 'button';
   addBtn.className = 'chan-new-btn';
   addBtn.textContent = '+';
-  addBtn.title = 'Créer une nouvelle chaîne';
-  addBtn.addEventListener('click', function () {
-    var name = prompt('Nom de la nouvelle chaîne ?');
-    if (!name || !name.trim()) return;
-    addBtn.disabled = true;
-    fetch('/api/channels/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) })
-      .then(function () { location.reload(); })
-      .catch(function () { addBtn.disabled = false; });
-  });
+  addBtn.title = 'Ajouter une chaîne (assistant guidé)';
+  addBtn.addEventListener('click', function () { location.href = '/onboarding'; });
   sel.parentNode.insertBefore(addBtn, sel.nextSibling);
   fetch('/api/channels').then(function (r) { return r.json(); }).then(function (d) {
     sel.innerHTML = '';

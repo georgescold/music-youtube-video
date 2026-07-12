@@ -43,6 +43,34 @@ export async function getVideoStats(videoIds = [], creds = envCreds()) {
   return out;
 }
 
+// Scopes YouTube nécessaires (upload + gestion + analytics).
+export const YT_SCOPES = ['https://www.googleapis.com/auth/youtube', 'https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/yt-analytics.readonly'];
+
+// Construit l'URL de consentement Google (flux navigateur in-app).
+export function buildAuthUrl({ clientId, redirectUri, state }) {
+  return 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: clientId, redirect_uri: redirectUri, response_type: 'code',
+    scope: YT_SCOPES.join(' '), access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state: state || ''
+  });
+}
+
+// Échange le code d'autorisation contre des jetons + récupère la chaîne YouTube autorisée.
+export async function exchangeYouTubeCode({ code, clientId, clientSecret, redirectUri }) {
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' })
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(`échange OAuth : ${r.status} ${data.error_description || data.error || ''}`);
+  let channelId = null, channelTitle = null;
+  try {
+    const cr = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${data.access_token}` } });
+    const cd = await cr.json(); const it = cd.items?.[0];
+    if (it) { channelId = it.id; channelTitle = it.snippet?.title || null; }
+  } catch {}
+  return { refreshToken: data.refresh_token || null, channelId, channelTitle };
+}
+
 export async function getMyChannel(creds = envCreds()) {
   const accessToken = await getAccessToken(creds);
   const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet,status&mine=true', { headers: { Authorization: `Bearer ${accessToken}` } });

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, storageDelete } from './services/supabase.mjs';
 import { runPipeline } from './pipeline.mjs';
-import { setPrivacyStatus, deleteVideo, getMyChannel, setThumbnail, getVideoStats } from './services/youtube.mjs';
+import { setPrivacyStatus, deleteVideo, getMyChannel, setThumbnail, getVideoStats, buildAuthUrl, exchangeYouTubeCode } from './services/youtube.mjs';
 import { getVideoAnalytics } from './services/youtubeAnalytics.mjs';
 import { renderThumbnail, stripPlaylistTag, THUMB_FONTS } from './services/ffmpeg.mjs';
 import { tmpdir } from 'node:os';
@@ -408,6 +408,41 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/settings') {
       return send(res, 200, 'text/html; charset=utf-8', await readFile(join(__dirname, 'settings.html')));
+    }
+    if (req.method === 'GET' && path === '/onboarding') {
+      return send(res, 200, 'text/html; charset=utf-8', await readFile(join(__dirname, 'onboarding.html')));
+    }
+
+    // ── Connexion YouTube en un clic (OAuth navigateur) : redirige vers Google, revient sur /oauth/youtube/callback. ──
+    const oauthRedirect = () => ((req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http')) + '://' + req.headers.host + '/oauth/youtube/callback');
+    if (req.method === 'GET' && path === '/oauth/youtube/start') {
+      const chId = q.get('channel');
+      const ch = chId ? await getChannel(chId) : await getActiveChannel();
+      if (!ch) return send(res, 400, 'text/html', '<p>Chaîne introuvable.</p>');
+      const creds = channelCreds(ch).youtube;
+      if (!creds.clientId) return send(res, 400, 'text/html', '<p>Client OAuth Google manquant (Paramètres).</p>');
+      res.writeHead(302, { location: buildAuthUrl({ clientId: creds.clientId, redirectUri: oauthRedirect(), state: ch.id }) });
+      return res.end();
+    }
+    if (req.method === 'GET' && path === '/oauth/youtube/callback') {
+      const code = q.get('code'), chId = q.get('state'), err = q.get('error');
+      const done = (ok, msg) => send(res, 200, 'text/html; charset=utf-8',
+        `<!doctype html><meta charset=utf-8><body style="font-family:system-ui;background:#0f0f0f;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center">
+         <div><div style="font-size:40px">${ok ? '✅' : '⚠️'}</div><p style="max-width:420px">${msg}</p><p style="color:#888;font-size:13px">Tu peux fermer cette fenêtre.</p></div>
+         <script>try{window.opener&&window.opener.postMessage({ytoauth:${ok ? 'true' : 'false'}},'*')}catch(e){}setTimeout(function(){window.close()},${ok ? 1200 : 6000})</script></body>`);
+      if (err) return done(false, 'Autorisation refusée : ' + err);
+      const ch = chId ? await getChannel(chId) : null;
+      if (!code || !ch) return done(false, 'Requête invalide.');
+      try {
+        const creds = channelCreds(ch).youtube;
+        const r = await exchangeYouTubeCode({ code, clientId: creds.clientId, clientSecret: creds.clientSecret, redirectUri: oauthRedirect() });
+        if (!r.refreshToken) return done(false, 'Google n\'a pas renvoyé de refresh token. Réessaie en cochant bien le consentement.');
+        await updateChannel(ch.id, { yt_refresh_token: r.refreshToken, ...(r.channelId ? { yt_channel_id: r.channelId } : {}) });
+        setupScheduler().catch(() => {});
+        return done(true, 'Chaîne YouTube connectée' + (r.channelTitle ? ' : « ' + r.channelTitle + ' »' : '') + ' !');
+      } catch (e) {
+        return done(false, 'Échec de connexion : ' + String(e.message || e).slice(0, 200));
+      }
     }
 
     // ── Assets ──

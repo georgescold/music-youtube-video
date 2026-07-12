@@ -1,0 +1,177 @@
+<script>(function(){try{var t=localStorage.getItem('abm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nouvelle chaîne — The Playlist Youtube</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { font-family: var(--font-sans); background: var(--color-bg); color: var(--color-ink); margin: 0; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 40px 22px 80px; }
+  .brand { font-size: 14px; font-weight: 700; color: var(--color-mut); margin-bottom: 26px; display: flex; align-items: center; gap: 8px; }
+  .brand img { height: 18px; }
+  .dots { display: flex; gap: 7px; margin-bottom: 22px; }
+  .dot { height: 5px; flex: 1; border-radius: 100px; background: var(--color-rule2); transition: background .2s; }
+  .dot.on { background: var(--color-ink); }
+  .dot.done { background: #3f9a5a; }
+  .card { border: 1px solid var(--color-rule2); border-radius: 16px; background: var(--color-paper); padding: 26px 26px 22px; }
+  .bot { display: flex; gap: 12px; margin-bottom: 18px; }
+  .bot .ava { flex: none; width: 34px; height: 34px; border-radius: 100px; background: var(--color-ink); color: var(--color-paper); display: flex; align-items: center; justify-content: center; font-size: 17px; }
+  .bot .msg { font-size: 15px; line-height: 1.5; padding-top: 4px; }
+  .bot .msg b { font-weight: 700; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: var(--color-mut); margin: 0 0 18px; }
+  input, textarea, select { width: 100%; padding: 11px 13px; background: var(--color-bg); border: 1px solid var(--color-rule2); border-radius: 10px; font-size: 14px; color: var(--color-ink); font-family: var(--font-sans); box-sizing: border-box; }
+  textarea { min-height: 74px; resize: vertical; }
+  label.fld { display: block; font-size: 12px; font-weight: 600; color: var(--color-mut); margin: 14px 0 6px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--color-rule2); background: var(--color-paper); color: var(--color-ink); border-radius: 100px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
+  .btn:hover { border-color: var(--color-ink); }
+  .btn-primary { background: var(--color-ink); color: var(--color-paper); border-color: var(--color-ink); }
+  .btn-primary:disabled { opacity: .5; cursor: default; }
+  .btn-link { background: none; border: none; color: var(--color-mut); text-decoration: underline; cursor: pointer; font-size: 13px; padding: 6px 2px; font-family: var(--font-sans); }
+  .actions { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+  .actions .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; padding: 7px 13px; border-radius: 100px; }
+  .pill.ok { color: #0a7d33; background: rgba(16,163,74,.12); }
+  .pill.warn { color: #a15b00; background: rgba(176,134,46,.14); }
+  .note { font-size: 12px; color: var(--color-mut2); margin-top: 12px; line-height: 1.5; }
+  .code { font-family: ui-monospace, monospace; font-size: 12px; background: var(--color-soft2); padding: 3px 7px; border-radius: 6px; word-break: break-all; }
+  a { color: var(--color-ink); }
+</style>
+<body>
+<div class="wrap">
+  <div class="brand"><img src="/logo.png" alt="">The Playlist Youtube · Nouvelle chaîne</div>
+  <div class="dots" id="dots"></div>
+  <div class="card" id="card"></div>
+  <div style="text-align:center;margin-top:18px"><a class="btn-link" href="/videos">Quitter l'assistant</a></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { step: 0, channelId: null, channelName: '', ytConnected: false };
+const STEPS = ['name', 'youtube', 'assets', 'refs', 'settings', 'done'];
+
+function renderDots() {
+  $('dots').innerHTML = STEPS.map((_, i) => `<div class="dot ${i < state.step ? 'done' : (i === state.step ? 'on' : '')}"></div>`).join('');
+}
+function bot(msg) { return `<div class="bot"><div class="ava">🎬</div><div class="msg">${msg}</div></div>`; }
+function go(delta) { state.step = Math.max(0, Math.min(STEPS.length - 1, state.step + delta)); render(); }
+
+function render() {
+  renderDots();
+  const s = STEPS[state.step];
+  if (s === 'name') return renderName();
+  if (s === 'youtube') return renderYoutube();
+  if (s === 'assets') return renderAssets();
+  if (s === 'refs') return renderRefs();
+  if (s === 'settings') return renderSettings();
+  if (s === 'done') return renderDone();
+}
+
+// 1 — Nom
+function renderName() {
+  $('card').innerHTML =
+    bot("Salut 👋 Je t'aide à ajouter une nouvelle chaîne en 2 minutes. On commence par lui donner un <b>nom</b> (tu pourras le changer).") +
+    `<label class="fld">Nom de la chaîne</label><input id="i-name" placeholder="Ex : Rêveries nocturnes" value="${state.channelName.replace(/"/g,'&quot;')}">
+     <div class="actions"><div class="spacer"></div><button class="btn-primary btn" id="b-next">Créer la chaîne →</button></div>
+     <div class="note">Elle héritera automatiquement de tes accès (Epidemic, Claude, client Google). Rien à reconfigurer.</div>`;
+  $('i-name').focus();
+  $('b-next').onclick = async () => {
+    const name = $('i-name').value.trim(); if (!name) { $('i-name').focus(); return; }
+    $('b-next').disabled = true; $('b-next').textContent = 'Création…';
+    try {
+      const d = await (await fetch('/api/channels/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })).json();
+      if (d.id) { state.channelId = d.id; state.channelName = name; go(1); return; }
+    } catch (e) {}
+    $('b-next').disabled = false; $('b-next').textContent = 'Créer la chaîne →';
+  };
+}
+
+// 2 — YouTube
+function renderYoutube() {
+  const connected = state.ytConnected;
+  $('card').innerHTML =
+    bot(connected
+      ? "Parfait, ta chaîne YouTube est <b>connectée</b> ✅ On peut continuer."
+      : "Maintenant, connecte le <b>compte YouTube</b> de cette chaîne. Tu as déjà une chaîne YouTube pour ça&nbsp;?") +
+    (connected
+      ? `<span class="pill ok">✅ YouTube connecté</span>`
+      : `<div class="row">
+           <button class="btn-primary btn" id="b-connect">🔗 Connecter ma chaîne YouTube</button>
+           <a class="btn" href="https://www.youtube.com/channel_switcher" target="_blank">➕ Créer une chaîne YouTube d'abord</a>
+         </div>
+         <div id="yt-msg" class="note"></div>
+         <div class="note">Une fenêtre Google va s'ouvrir : choisis le <b>bon compte</b>, coche les autorisations.
+         <br>Alternative : <a href="/settings" target="_blank">coller un refresh token à la main</a> dans les Paramètres.</div>`) +
+    `<div class="actions">
+       <button class="btn-link" id="b-skip">Passer cette étape</button><div class="spacer"></div>
+       <button class="btn-primary btn" id="b-next" ${connected ? '' : 'style="opacity:.5"'}>Continuer →</button>
+     </div>`;
+  $('b-skip').onclick = () => go(1);
+  $('b-next').onclick = () => go(1);
+  if (!connected) {
+    $('b-connect').onclick = () => {
+      const w = window.open('/oauth/youtube/start?channel=' + encodeURIComponent(state.channelId), 'ytoauth', 'width=520,height=700');
+      $('yt-msg').textContent = 'Fenêtre Google ouverte… autorise l\'accès, puis reviens ici.';
+    };
+  }
+}
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.ytoauth === true) { state.ytConnected = true; if (STEPS[state.step] === 'youtube') render(); }
+});
+
+// 3 — Images de fond
+function renderAssets() {
+  $('card').innerHTML =
+    bot("Ta chaîne a besoin d'<b>images de fond</b> : elles servent d'arrière-plan aux vidéos ET de base aux miniatures. Ajoutes-en quelques-unes (tu peux en remettre plus tard).") +
+    `<div class="row">
+       <a class="btn-primary btn" href="/" target="_blank">🖼️ Ouvrir la page Assets pour ajouter des images</a>
+     </div>
+     <div class="note">Astuce : ajoute au moins une dizaine d'images variées — l'outil évite de réutiliser une image avant 30 vidéos.</div>
+     <div class="actions"><button class="btn-link" id="b-skip">Passer</button><div class="spacer"></div><button class="btn-primary btn" id="b-next">J'ai ajouté mes images →</button></div>`;
+  $('b-skip').onclick = () => go(1); $('b-next').onclick = () => go(1);
+}
+
+// 4 — Références
+function renderRefs() {
+  $('card').innerHTML =
+    bot("Deux types de <b>références</b> rendent tes vidéos meilleures :<br>• des <b>vidéos/chaînes YouTube</b> inspirantes → l'outil apprend le style des <b>titres</b> qui cartonnent ;<br>• des <b>chansons</b> (Spotify) → elles guident la <b>musique</b>.") +
+    `<div class="row"><a class="btn-primary btn" href="/references" target="_blank">🎯 Ouvrir la page Références</a></div>
+     <div class="note">Après avoir ajouté des vidéos de référence, clique « Analyser » (dans Paramètres) pour générer le playbook des titres.</div>
+     <div class="actions"><button class="btn-link" id="b-skip">Passer</button><div class="spacer"></div><button class="btn-primary btn" id="b-next">C'est fait →</button></div>`;
+  $('b-skip').onclick = () => go(1); $('b-next').onclick = () => go(1);
+}
+
+// 5 — Réglages express
+function renderSettings() {
+  $('card').innerHTML =
+    bot("Dernier réglage rapide : que veut faire cette chaîne, et comment publier&nbsp;?") +
+    `<label class="fld">Objectif / thème de la chaîne (optionnel)</label>
+     <textarea id="i-obj" placeholder="Ex : playlists de musique d'amour douce pour promouvoir l'app Compaatible"></textarea>
+     <label class="fld">Publication</label>
+     <select id="i-pub">
+       <option value="review">Relecture — non répertorié, je valide avant publication</option>
+       <option value="auto">Publication directe — public tout de suite, sans validation</option>
+     </select>
+     <label class="fld" style="display:flex;align-items:center;gap:9px;margin-top:14px;text-transform:none;font-size:14px;color:var(--color-ink)"><input type="checkbox" id="i-cron" style="width:16px;height:16px"> Activer la génération automatique quotidienne (CRON)</label>
+     <div class="actions"><button class="btn-link" id="b-skip">Passer</button><div class="spacer"></div><button class="btn-primary btn" id="b-next">Enregistrer →</button></div>`;
+  $('b-skip').onclick = () => go(1);
+  $('b-next').onclick = async () => {
+    $('b-next').disabled = true;
+    try {
+      await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ objective: $('i-obj').value.trim(), publish_mode: $('i-pub').value, cron_enabled: $('i-cron').checked }) });
+    } catch (e) {}
+    go(1);
+  };
+}
+
+// 6 — Fini
+function renderDone() {
+  $('card').innerHTML =
+    bot("🎉 Ta chaîne <b>« " + (state.channelName || '') + " »</b> est prête !" + (state.ytConnected ? "" : "<br><span class='pill warn' style='margin-top:8px'>⚠️ YouTube pas encore connecté — pense à le faire dans les Paramètres avant de générer.</span>")) +
+    `<div class="row"><a class="btn-primary btn" href="/videos">🎬 Aller générer une vidéo</a><a class="btn" href="/settings">⚙️ Ouvrir les Paramètres</a></div>`;
+}
+
+render();
+</script>
+</body>
+</html>
