@@ -72,6 +72,25 @@
 
   .vid-body { border-top: 1px solid var(--color-rule); padding: 16px; display: none; }
   .vid-body.open { display: block; }
+  .dash { border: 1px solid var(--color-rule2); border-radius: 14px; padding: 18px 20px; margin: 0 0 26px; background: var(--color-paper); }
+  .dash-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .dash-name { font-size: 16px; font-weight: 700; color: var(--color-ink); }
+  .live { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 100px; }
+  .live.on { color: #0a7d33; background: rgba(16,163,74,.12); }
+  .live.off { color: var(--color-mut); background: var(--color-soft2); }
+  .live .dot { width: 8px; height: 8px; border-radius: 100px; background: currentColor; }
+  .live.on .dot { animation: livepulse 1.4s ease-in-out infinite; }
+  @keyframes livepulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,163,74,.5); } 50% { opacity: .55; box-shadow: 0 0 0 5px rgba(16,163,74,0); } }
+  .dash-sub { font-size: 12.5px; color: var(--color-mut); margin-top: 8px; }
+  .dash-counts { display: flex; gap: 22px; margin: 16px 0 4px; flex-wrap: wrap; }
+  .dash-count b { display: block; font-size: 22px; font-weight: 700; color: var(--color-ink); line-height: 1.1; }
+  .dash-count span { font-size: 11.5px; color: var(--color-mut2); text-transform: uppercase; letter-spacing: .04em; }
+  .dash-acts { margin-top: 16px; border-top: 1px solid var(--color-rule); padding-top: 12px; }
+  .dash-acts h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--color-mut); margin: 0 0 8px; }
+  .act { display: flex; align-items: baseline; gap: 9px; font-size: 12.5px; padding: 3px 0; color: var(--color-ink); }
+  .act .ai { flex: none; }
+  .act .at { color: var(--color-mut2); font-size: 11px; margin-left: auto; flex: none; white-space: nowrap; }
+  .act .an { color: var(--color-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .vdetail { margin-bottom: 14px; }
   .vd-load { font-size: 12px; color: var(--color-mut2); }
   .vd-block { margin-bottom: 14px; }
@@ -148,6 +167,7 @@
   </div>
 </div>
 <div class="wrap">
+  <div id="dashboard" class="dash" style="display:none"></div>
   <div class="head">
     <div>
       <h1>Vidéos</h1>
@@ -471,6 +491,38 @@ async function initThumbEditor(vid, container) {
     saveBtn.disabled = false;
   };
 }
+// ── Tableau de bord (haut de la page Vidéos = accueil) : statut auto (Live) + compteurs + dernières actions ──
+function dashWhen(s) { const t = new Date(s), diff = (Date.now() - t) / 1000; if (diff < 60) return "à l'instant"; if (diff < 3600) return 'il y a ' + Math.floor(diff / 60) + ' min'; if (diff < 86400) return 'il y a ' + Math.floor(diff / 3600) + ' h'; return t.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }); }
+const ACT_MAP = { curate: 'Curation', download: 'Téléchargement', render: 'Montage', upload: 'Upload', thumbnail: 'Miniature', metadata: 'Titre & description', publish: 'Publication', done: 'Vidéo prête', error: 'Échec', vision: 'Analyse image', emotion: 'Émotion', background: 'Fond', cancelled: 'Annulée', tracks: 'Playlist' };
+const ACT_ICO = { upload: '⬆️', render: '🎬', thumbnail: '🖼️', curate: '🎵', download: '⬇️', metadata: '✍️', publish: '📢', done: '✅', vision: '🔍', background: '🖼️', tracks: '🎶' };
+function dashActLabel(a) { let b = ACT_MAP[a.step] || a.step; if (a.status === 'fail' || a.status === 'warn') b += ' — ' + (a.message || '').slice(0, 60); return b; }
+function dashActIcon(a) { if (a.status === 'fail') return '❌'; if (a.status === 'warn') return '⚠️'; return ACT_ICO[a.step] || '•'; }
+async function loadHome() {
+  const el = document.getElementById('dashboard');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/home')).json();
+    if (!d || !d.channel) { el.style.display = 'none'; return; }
+    const c = d.channel;
+    const live = c.cron_enabled
+      ? '<span class="live on"><span class="dot"></span>Live — génération auto</span>'
+      : '<span class="live off"><span class="dot"></span>Auto désactivée</span>';
+    const win = (c.publish_time_start && c.publish_time_end) ? ' · fenêtre ' + c.publish_time_start + '–' + c.publish_time_end : '';
+    const mode = c.publish_mode === 'auto' ? 'publication auto (public)' : 'brouillons à valider';
+    const sub = c.cron_enabled
+      ? (c.max_posts_per_day + '/j max' + win + ' · ' + mode + ' · ' + d.today + " générée(s) aujourd'hui")
+      : ('Active le CRON dans les Paramètres pour automatiser · ' + mode);
+    const cnt = (n, lbl) => '<div class="dash-count"><b>' + n + '</b><span>' + lbl + '</span></div>';
+    const acts = (d.actions || []).map(a => '<div class="act"><span class="ai">' + dashActIcon(a) + '</span><span>' + esc(dashActLabel(a)) + '</span><span class="an">' + esc(a.title) + '</span><span class="at">' + dashWhen(a.created_at) + '</span></div>').join('');
+    el.style.display = '';
+    el.innerHTML =
+      '<div class="dash-top"><span class="dash-name">' + esc(c.name) + '</span>' + live + '</div>' +
+      '<div class="dash-sub">' + sub + '</div>' +
+      '<div class="dash-counts">' + cnt(d.counts.published, 'publiées') + cnt(d.counts.pending_review, 'à valider') + cnt(d.counts.failed, 'échecs') + cnt(d.counts.total, 'au total') + '</div>' +
+      '<div class="dash-acts"><h3>Dernières actions</h3>' + (acts || '<div class="act" style="color:var(--color-mut2)">Aucune action récente.</div>') + '</div>';
+  } catch (e) { el.style.display = 'none'; }
+}
+loadHome();
 load();
 // Au chargement : reprend le direct uniquement si une génération est en cours (évite d'afficher un vieux journal).
 (async () => {
