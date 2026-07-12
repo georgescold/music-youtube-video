@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { dbSelect, dbInsert, dbPatch, dbDelete, storageUpload, storageSign, storageDelete } from './services/supabase.mjs';
 import { runPipeline } from './pipeline.mjs';
-import { setPrivacyStatus, deleteVideo, getMyChannel, setThumbnail } from './services/youtube.mjs';
+import { setPrivacyStatus, deleteVideo, getMyChannel, setThumbnail, getVideoStats } from './services/youtube.mjs';
+import { getVideoAnalytics } from './services/youtubeAnalytics.mjs';
 import { renderThumbnail, stripPlaylistTag, THUMB_FONTS } from './services/ffmpeg.mjs';
 import { tmpdir } from 'node:os';
 import { rmSync } from 'node:fs';
@@ -456,6 +457,48 @@ const server = http.createServer(async (req, res) => {
       const ch = await getActiveChannel();
       const rows = await dbSelect('videos', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=created_at.desc&limit=50');
       return json(res, rows);
+    }
+    // Stats "aperçu" (batch) : vues/likes/commentaires en direct pour les vidéos en ligne de la chaîne active.
+    if (req.method === 'GET' && path === '/api/videos/stats') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { byId: {} });
+      const vids = await dbSelect('videos', `?channel_id=eq.${ch.id}&youtube_video_id=not.is.null&select=youtube_video_id`).catch(() => []);
+      const ids = [...new Set(vids.map(v => v.youtube_video_id).filter(Boolean))];
+      if (!ids.length) return json(res, { byId: {} });
+      let byId = {};
+      try {
+        const stats = await getVideoStats(ids, channelCreds(ch).youtube);
+        byId = Object.fromEntries((stats || []).map(s => [s.id, { views: s.views, likes: s.likes, comments: s.comments }]));
+      } catch (e) { /* dégradé silencieux : l'aperçu s'affiche sans chiffres */ }
+      return json(res, { byId });
+    }
+    // Détail d'une vidéo : rétention/temps de visionnage (Analytics) + paramètres de génération.
+    if (req.method === 'GET' && path === '/api/videos/detail') {
+      const id = q.get('id');
+      const [v] = id ? await dbSelect('videos', `?id=eq.${id}`).catch(() => []) : [];
+      if (!v) return json(res, { ok: false, error: 'vidéo introuvable' });
+      const ch = v.channel_id ? await getChannel(v.channel_id) : await getActiveChannel();
+      // Paramètres : images de fond (URLs signées), tracklist, émotion/mood/durée/miniature/hashtags.
+      const bgIds = Array.isArray(v.background_asset_ids) ? v.background_asset_ids : [];
+      let bgImages = [];
+      if (bgIds.length) {
+        const assets = await dbSelect('assets', `?id=in.(${bgIds.join(',')})&select=id,storage_path,mime_type,filename`).catch(() => []);
+        bgImages = await Promise.all(assets.filter(a => (a.mime_type || '').startsWith('image')).map(async a => ({ filename: a.filename, url: await storageSign('assets', a.storage_path).catch(() => null) })));
+      }
+      const tracks = await dbSelect('video_tracks', `?video_id=eq.${id}&order=position.asc&select=title,artist,start_sec,length_sec`).catch(() => []);
+      // Analytics (rétention + temps de visionnage) — dégrade proprement si scope manquant ou vidéo trop récente.
+      let analytics = null;
+      if (v.youtube_video_id) {
+        const start = String(v.published_at || v.created_at || '2020-01-01').slice(0, 10);
+        const end = new Date().toISOString().slice(0, 10);
+        const a = await getVideoAnalytics({ videoIds: [v.youtube_video_id], startDate: start, endDate: end, creds: channelCreds(ch).youtube }).catch(() => ({ ok: false }));
+        analytics = a.ok ? (a.byVideo[v.youtube_video_id] || {}) : { error: a.error, needsReauth: a.needsReauth };
+      }
+      return json(res, {
+        ok: true,
+        params: { emotion: v.emotion, mood: v.mood, theme: v.theme, duration_sec: v.duration_sec, thumbnail_config: v.thumbnail_config || null, hashtags: v.hashtags || [], bgImages, tracks, refCount: (v.reference_song_ids || []).length },
+        analytics
+      });
     }
     // Tableau de bord d'accueil : statut auto (Live), compteurs, dernières vidéos + dernières actions.
     if (req.method === 'GET' && path === '/api/home') {

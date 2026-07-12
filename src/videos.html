@@ -72,6 +72,30 @@
 
   .vid-body { border-top: 1px solid var(--color-rule); padding: 16px; display: none; }
   .vid-body.open { display: block; }
+  .vdetail { margin-bottom: 14px; }
+  .vd-load { font-size: 12px; color: var(--color-mut2); }
+  .vd-block { margin-bottom: 14px; }
+  .vd-block h4 { font-size: 12px; font-weight: 700; color: var(--color-ink); margin: 0 0 8px; }
+  .vd-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+  .vd-stat { flex: 1; min-width: 90px; background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 10px; padding: 10px 12px; }
+  .vd-stat b { display: block; font-size: 18px; font-weight: 700; color: var(--color-ink); line-height: 1.1; }
+  .vd-stat span { font-size: 10.5px; color: var(--color-mut2); text-transform: uppercase; letter-spacing: .03em; }
+  .vd-note { font-size: 12px; color: var(--color-mut2); }
+  .vd-params { border: 1px solid var(--color-rule2); border-radius: 10px; background: var(--color-paper); }
+  .vd-params summary { cursor: pointer; padding: 10px 13px; font-size: 12.5px; font-weight: 600; color: var(--color-ink); list-style: none; }
+  .vd-params summary::-webkit-details-marker { display: none; }
+  .vd-params summary::before { content: '▸'; margin-right: 7px; color: var(--color-mut2); }
+  .vd-params[open] summary::before { content: '▾'; }
+  .vd-pbody { padding: 2px 13px 14px; border-top: 1px solid var(--color-rule); }
+  .vd-imglabel { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--color-mut); margin: 12px 0 6px; font-weight: 700; }
+  .vd-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .vd-chip { font-size: 12px; padding: 4px 10px; border-radius: 100px; background: var(--color-soft2); color: var(--color-ink); }
+  .vd-imgs { display: flex; gap: 7px; flex-wrap: wrap; }
+  .vd-img { width: 84px; height: 47px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-rule2); }
+  .vd-tracks { max-height: 190px; overflow: auto; }
+  .vd-track { font-size: 12px; color: var(--color-ink); padding: 2px 0; }
+  .vd-tn { color: var(--color-mut2); }
+  .vd-ta { color: var(--color-mut); }
   .preview { aspect-ratio: 16/9; width: 100%; border: 0; border-radius: 8px; background: var(--color-soft2); margin-bottom: 14px; }
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--color-mut); margin-bottom: 5px; }
@@ -286,9 +310,14 @@ async function act(url, id, confirmMsg) {
 
 async function load() {
   const rows = await (await fetch('/api/videos')).json();
+  // Aperçu des stats (batch, en direct) : vues/likes pour les vidéos en ligne.
+  let statsById = {};
+  try { statsById = (await (await fetch('/api/videos/stats')).json()).byId || {}; } catch (e) {}
   empty.style.display = rows.length ? 'none' : 'block';
   list.innerHTML = '';
   for (const v of rows) {
+    const st = v.youtube_video_id ? statsById[v.youtube_video_id] : null;
+    const overview = st ? ` · 👁 ${fmtNum(st.views)} · ❤️ ${fmtNum(st.likes)}` : '';
     const div = document.createElement('div');
     div.className = 'vid';
     const open = v.id === openId;
@@ -299,7 +328,7 @@ async function load() {
       <div class="vid-head" data-id="${v.id}">
         <div style="flex:1;min-width:0">
           <div class="vid-title">${v.title || '(sans titre)'}</div>
-          <div class="vid-meta tnum">${fmtDate(v.created_at)}${v.duration_sec ? ' · ' + fmtDur(v.duration_sec) : ''}${v.mood ? ' · ' + v.mood : ''}</div>
+          <div class="vid-meta tnum">${fmtDate(v.created_at)}${v.duration_sec ? ' · ' + fmtDur(v.duration_sec) : ''}${v.mood ? ' · ' + v.mood : ''}${overview}</div>
           ${v.note ? '<div class="vid-note">⚠️ ' + v.note.replace(/</g, '&lt;') + '</div>' : ''}
         </div>
         <span class="badge ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
@@ -309,6 +338,7 @@ async function load() {
         ${v.status === 'failed' ? '<div class="field err">Erreur : ' + (v.error || 'inconnue') + '</div>' : ''}
         ${embed}
         ${ytLink ? '<div style="margin-bottom:14px">' + ytLink + '</div>' : ''}
+        <div class="vdetail" id="detail_${v.id}">${open ? '<div class="vd-load">Chargement des statistiques…</div>' : ''}</div>
         ${v.youtube_video_id ? `<div class="thumb-editor" id="thumb_${v.id}">
           <label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--color-mut);margin-bottom:6px">Miniature — glisse le texte pour le déplacer</label>
           <canvas class="thumb-canvas" width="1280" height="720"></canvas>
@@ -342,7 +372,48 @@ async function load() {
     if (q('.del')) q('.del').onclick = () => act('/api/videos/delete', v.id, 'Supprimer cette vidéo (et la retirer de YouTube si elle y est) ?');
     list.appendChild(div);
     if (open && v.youtube_video_id) initThumbEditor(v.id, div);
+    if (open) loadDetail(v);
   }
+}
+
+// Format court des nombres (1 234 -> 1,2 k).
+function fmtNum(n) { n = Number(n) || 0; if (n >= 1e6) return (n / 1e6).toFixed(1).replace('.0', '') + ' M'; if (n >= 1e3) return (n / 1e3).toFixed(1).replace('.0', '') + ' k'; return String(n); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// Charge stats détaillées (rétention/temps) + paramètres de génération, à l'ouverture d'une vidéo.
+async function loadDetail(v) {
+  const el = document.getElementById('detail_' + v.id);
+  if (!el) return;
+  let d;
+  try { d = await (await fetch('/api/videos/detail?id=' + encodeURIComponent(v.id))).json(); } catch (e) { el.innerHTML = ''; return; }
+  if (!d || !d.ok) { el.innerHTML = ''; return; }
+  let html = '';
+  // ── Statistiques (si la vidéo est en ligne) ──
+  if (v.youtube_video_id) {
+    const a = d.analytics || {};
+    const cell = (val, lbl) => '<div class="vd-stat"><b>' + val + '</b><span>' + lbl + '</span></div>';
+    let cells = '';
+    if (a.error) cells = '<div class="vd-note">' + (a.needsReauth ? 'Ré-autorise l\'accès YouTube (scope Analytics) pour la rétention.' : 'Statistiques détaillées indisponibles pour le moment.') + '</div>';
+    else cells = cell(a.avgViewPct != null ? Math.round(a.avgViewPct) + ' %' : '—', 'rétention') + cell(a.avgViewSec != null ? Math.round(a.avgViewSec) + ' s' : '—', 'vue moyenne') + cell(a.watchTimeMin != null ? fmtNum(Math.round(a.watchTimeMin)) + ' min' : '—', 'temps visionné') + cell(a.views != null ? fmtNum(a.views) : '—', 'vues (période)');
+    html += '<div class="vd-block"><h4>📊 Statistiques</h4><div class="vd-stats">' + cells + '</div></div>';
+  }
+  // ── Paramètres de génération (repliable) ──
+  const p = d.params || {};
+  const imgs = (p.bgImages || []).filter(i => i.url).map(i => '<img class="vd-img" src="' + i.url + '" title="' + esc(i.filename) + '" loading="lazy">').join('');
+  const chips = [];
+  if (p.emotion) chips.push('<span class="vd-chip">💗 ' + esc(p.emotion) + '</span>');
+  if (p.mood) chips.push('<span class="vd-chip">🎼 ' + esc(p.mood) + '</span>');
+  if (p.duration_sec) chips.push('<span class="vd-chip">⏱ ' + fmtDur(p.duration_sec) + '</span>');
+  if (p.refCount) chips.push('<span class="vd-chip">🎧 ' + p.refCount + ' réf.</span>');
+  if (p.thumbnail_config && p.thumbnail_config.font) chips.push('<span class="vd-chip">🖊 ' + esc(p.thumbnail_config.font) + '</span>');
+  const tracks = (p.tracks || []).map((t, i) => '<div class="vd-track"><span class="vd-tn">' + (i + 1) + '.</span> ' + esc(t.title || '') + (t.artist ? ' <span class="vd-ta">— ' + esc(t.artist) + '</span>' : '') + '</div>').join('');
+  html += '<details class="vd-params"><summary>⚙️ Paramètres de la vidéo</summary><div class="vd-pbody">' +
+    (chips.length ? '<div class="vd-chips">' + chips.join('') + '</div>' : '') +
+    (imgs ? '<div class="vd-imglabel">Images de fond</div><div class="vd-imgs">' + imgs + '</div>' : '') +
+    ((p.hashtags || []).length ? '<div class="vd-imglabel">Hashtags</div><div class="vd-chips">' + p.hashtags.map(h => '<span class="vd-chip">#' + esc(h) + '</span>').join('') + '</div>' : '') +
+    (tracks ? '<div class="vd-imglabel">Playlist (' + p.tracks.length + ' titres)</div><div class="vd-tracks">' + tracks + '</div>' : '') +
+    '</div></details>';
+  el.innerHTML = html;
 }
 
 // ── Éditeur de miniature (aperçu canvas + texte/police/position + ré-upload) ──
