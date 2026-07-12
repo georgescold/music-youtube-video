@@ -1,5 +1,12 @@
 // Notifications Discord par webhook (une par chaîne). Envoi best-effort (n'échoue jamais le pipeline).
+import { dbInsert } from './supabase.mjs';
 export const COLORS = { ok: 0x3f7a55, error: 0xb3413a, info: 0x181715, warn: 0xb0862e };
+
+// Enregistre la notif dans l'app (cloche 🔔), TOUJOURS (indépendamment de Discord). Best-effort.
+function recordInApp(channel, type, embed) {
+  if (!channel || !channel.id) return;
+  dbInsert('notifications', [{ channel_id: channel.id, type, title: embed.title || null, body: embed.description || null, url: embed.url || null }]).catch(() => {});
+}
 
 // Types de notifications + libellé (pour l'UI) + valeur par défaut (activé sauf mention).
 export const NOTIF_TYPES = {
@@ -9,6 +16,7 @@ export const NOTIF_TYPES = {
   gen_started: { label: 'Génération démarrée', def: false, group: 'Production' },
   epidemic_auth: { label: 'Epidemic déconnecté / reconnecté', def: true, group: 'Santé' },
   youtube_auth: { label: 'YouTube déconnecté (jeton expiré)', def: true, group: 'Santé' },
+  youtube_unverified: { label: 'Chaîne YouTube non vérifiée (vérif. téléphone)', def: true, group: 'Santé' },
   quota: { label: 'Quota d\'upload YouTube atteint', def: true, group: 'Santé' },
   backgrounds_low: { label: 'Images de fond bientôt épuisées', def: true, group: 'Santé' },
   daily_report: { label: 'Rapport quotidien (vues, top, rétention)', def: true, group: 'Performance' },
@@ -24,8 +32,9 @@ export function notifEnabled(channel, type) {
   if (type in prefs) return prefs[type] !== false;
   return NOTIF_TYPES[type] ? NOTIF_TYPES[type].def !== false : true;
 }
-// Envoi conditionné par la préférence de la chaîne (best-effort). À utiliser partout au lieu de sendDiscord direct.
+// Émet une notification : TOUJOURS dans l'app (cloche), et sur Discord si la préférence l'autorise.
 export function notifyChannel(channel, type, embed) {
+  recordInApp(channel, type, embed); // in-app : voit tout, même sans webhook
   if (!channel || !channel.discord_webhook || !notifEnabled(channel, type)) return Promise.resolve(false);
   return sendDiscord(channel.discord_webhook, embed).catch(() => false);
 }

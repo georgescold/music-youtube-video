@@ -437,8 +437,16 @@ const server = http.createServer(async (req, res) => {
         const creds = channelCreds(ch).youtube;
         const r = await exchangeYouTubeCode({ code, clientId: creds.clientId, clientSecret: creds.clientSecret, redirectUri: oauthRedirect() });
         if (!r.refreshToken) return done(false, 'Google n\'a pas renvoyé de refresh token. Réessaie en cochant bien le consentement.');
-        await updateChannel(ch.id, { yt_refresh_token: r.refreshToken, ...(r.channelId ? { yt_channel_id: r.channelId } : {}) });
+        const updated = await updateChannel(ch.id, { yt_refresh_token: r.refreshToken, ...(r.channelId ? { yt_channel_id: r.channelId } : {}) });
         setupScheduler().catch(() => {});
+        // Prévient (une fois) si la chaîne n'est pas vérifiée : la miniature perso et les vidéos > 15 min l'exigent.
+        try {
+          const yt = await getMyChannel(channelCreds(updated).youtube);
+          const lu = yt?.status?.longUploadsStatus;
+          if (lu && lu !== 'allowed' && lu !== 'eligible') {
+            notifyChannel(updated, 'youtube_unverified', { title: '⚠️ Chaîne YouTube à vérifier', description: 'La chaîne « ' + (r.channelTitle || updated.name) + ' » n\'est pas vérifiée. La miniature personnalisée et les vidéos de +15 min nécessitent une vérification par téléphone : https://www.youtube.com/verify', color: COLORS.warn, url: 'https://www.youtube.com/verify' });
+          }
+        } catch (e) {}
         return done(true, 'Chaîne YouTube connectée' + (r.channelTitle ? ' : « ' + r.channelTitle + ' »' : '') + ' !');
       } catch (e) {
         return done(false, 'Échec de connexion : ' + String(e.message || e).slice(0, 200));
@@ -607,6 +615,30 @@ const server = http.createServer(async (req, res) => {
         params: { emotion: v.emotion, mood: v.mood, theme: v.theme, duration_sec: v.duration_sec, thumbnail_config: v.thumbnail_config || null, hashtags: v.hashtags || [], bgImages, tracks, refCount: (v.reference_song_ids || []).length },
         analytics
       });
+    }
+    // Centre de notifications in-app (cloche) : liste des événements de la chaîne active + compteur non-lus.
+    if (req.method === 'GET' && path === '/api/notifications') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { items: [], unread: 0 });
+      const items = await dbSelect('notifications', `?channel_id=eq.${ch.id}&order=created_at.desc&limit=40&select=id,type,title,body,url,read,created_at`).catch(() => []);
+      const unread = items.filter(n => !n.read).length;
+      return json(res, { items, unread });
+    }
+    if (req.method === 'POST' && path === '/api/notifications/read') {
+      const ch = await getActiveChannel();
+      if (ch) await dbPatch('notifications', `channel_id=eq.${ch.id}&read=eq.false`, { read: true }).catch(() => {});
+      return json(res, { ok: true });
+    }
+    // Statut de vérification YouTube d'une chaîne (miniature perso / vidéos > 15 min nécessitent la vérif téléphone).
+    if (req.method === 'GET' && path === '/api/youtube/status') {
+      const chId = q.get('channel');
+      const ch = chId ? await getChannel(chId) : await getActiveChannel();
+      if (!ch) return json(res, { ok: false });
+      try {
+        const yt = await getMyChannel(channelCreds(ch).youtube);
+        const longUploads = yt?.status?.longUploadsStatus || 'unknown';
+        return json(res, { ok: true, title: yt?.snippet?.title || null, verified: longUploads === 'allowed' || longUploads === 'eligible', longUploads });
+      } catch (e) { return json(res, { ok: false, error: String(e.message || e).slice(0, 150) }); }
     }
     // Tableau de bord d'accueil : statut auto (Live), compteurs, dernières vidéos + dernières actions.
     if (req.method === 'GET' && path === '/api/home') {

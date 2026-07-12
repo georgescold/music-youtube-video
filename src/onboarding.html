@@ -94,7 +94,7 @@ function renderYoutube() {
       ? "Parfait, ta chaîne YouTube est <b>connectée</b> ✅ On peut continuer."
       : "Maintenant, connecte le <b>compte YouTube</b> de cette chaîne. Tu as déjà une chaîne YouTube pour ça&nbsp;?") +
     (connected
-      ? `<span class="pill ok">✅ YouTube connecté</span>`
+      ? `<span class="pill ok">✅ YouTube connecté</span><div id="yt-verif" style="margin-top:12px"></div>`
       : `<div class="row">
            <button class="btn-primary btn" id="b-connect">🔗 Connecter ma chaîne YouTube</button>
            <a class="btn" href="https://www.youtube.com/channel_switcher" target="_blank">➕ Créer une chaîne YouTube d'abord</a>
@@ -110,9 +110,21 @@ function renderYoutube() {
   $('b-next').onclick = () => go(1);
   if (!connected) {
     $('b-connect').onclick = () => {
-      const w = window.open('/oauth/youtube/start?channel=' + encodeURIComponent(state.channelId), 'ytoauth', 'width=520,height=700');
+      window.open('/oauth/youtube/start?channel=' + encodeURIComponent(state.channelId), 'ytoauth', 'width=520,height=700');
       $('yt-msg').textContent = 'Fenêtre Google ouverte… autorise l\'accès, puis reviens ici.';
     };
+  } else {
+    // Vérifie si la chaîne est vérifiée (miniature perso / vidéos > 15 min l'exigent).
+    fetch('/api/youtube/status?channel=' + encodeURIComponent(state.channelId)).then(r => r.json()).then(d => {
+      const box = $('yt-verif'); if (!box) return;
+      if (d.ok && !d.verified) {
+        box.innerHTML = '<span class="pill warn">⚠️ Chaîne non vérifiée</span>' +
+          '<div class="note">Pour activer la <b>miniature personnalisée</b> et les <b>vidéos de +15 min</b>, YouTube demande une <b>vérification par téléphone</b> (une fois). ' +
+          'Si le lien de connexion n\'était pas cliquable, c\'est souvent ça. → <a href="https://www.youtube.com/verify" target="_blank">Vérifier ma chaîne maintenant</a></div>';
+      } else if (d.ok && d.verified) {
+        box.innerHTML = '<span class="pill ok">✅ Chaîne vérifiée</span>';
+      }
+    }).catch(() => {});
   }
 }
 window.addEventListener('message', (e) => {
