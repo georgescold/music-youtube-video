@@ -818,6 +818,33 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/api/channels/select') {
       const b = await readJsonBody(req); if (!b.id) return json(res, { ok: false, error: 'id requis' }); await setActiveChannel(b.id); return json(res, { ok: true });
     }
+    // Supprime une chaîne DE L'OUTIL + toutes ses données liées (pas les vidéos déjà en ligne sur YouTube). Irréversible.
+    if (req.method === 'POST' && path === '/api/channels/delete') {
+      const b = await readJsonBody(req);
+      const all = await listChannels();
+      if (all.length <= 1) return json(res, { ok: false, error: 'Impossible de supprimer la seule chaîne. Crée-en une autre d\'abord.' });
+      const id = b.id || (await getActiveChannel())?.id;
+      const ch = all.find(c => c.id === id);
+      if (!ch) return json(res, { ok: false, error: 'chaîne introuvable' });
+      // Fichiers storage des assets de la chaîne (best-effort).
+      const assets = await dbSelect('assets', `?channel_id=eq.${id}&select=storage_path`).catch(() => []);
+      const paths = assets.map(a => a.storage_path).filter(Boolean);
+      if (paths.length) await storageDelete('assets', paths).catch(() => {});
+      // Lignes liées, dans l'ordre.
+      const vids = await dbSelect('videos', `?channel_id=eq.${id}&select=id`).catch(() => []);
+      const vidIds = vids.map(v => v.id);
+      if (vidIds.length) { await dbDelete('run_logs', `video_id=in.(${vidIds.join(',')})`).catch(() => {}); await dbDelete('video_tracks', `video_id=in.(${vidIds.join(',')})`).catch(() => {}); }
+      await dbDelete('video_stats', `channel_id=eq.${id}`).catch(() => {});
+      await dbDelete('notifications', `channel_id=eq.${id}`).catch(() => {});
+      await dbDelete('videos', `channel_id=eq.${id}`).catch(() => {});
+      await dbDelete('assets', `channel_id=eq.${id}`).catch(() => {});
+      await dbDelete('reference_songs', `channel_id=eq.${id}`).catch(() => {});
+      await dbDelete('channels', `id=eq.${id}`).catch(() => {});
+      // Si c'était l'active, on bascule sur une autre.
+      if (ch.is_active) { const other = all.find(c => c.id !== id); if (other) await setActiveChannel(other.id).catch(() => {}); }
+      setupScheduler().catch(() => {});
+      return json(res, { ok: true });
+    }
 
     // ── Paramètres (chaîne active) ──
     if (req.method === 'GET' && path === '/api/settings') {

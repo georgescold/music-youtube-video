@@ -79,7 +79,9 @@
   <h2>Chaîne active</h2>
   <div class="chanbar">
     <select id="chan-select"></select>
+    <button class="btn btn-sec" id="chan-delete" type="button" style="color:#b3413a;border-color:rgba(179,65,58,.4)" title="Supprimer cette chaîne de l'outil">🗑 Supprimer</button>
   </div>
+  <div id="delete-msg" style="font-size:11.5px;color:var(--color-mut2);margin:-2px 0 8px"></div>
   <div class="field" style="max-width:520px"><label>Nom de la chaîne</label>
     <div style="display:flex;gap:8px;align-items:center">
       <input id="f-name" style="flex:1">
@@ -532,6 +534,21 @@ $('analyze-btn').onclick = async () => {
     else meta.textContent = 'Échec : ' + (d.error || 'inconnu');
   } catch (e) { meta.textContent = 'Erreur réseau'; }
   btn.disabled = false;
+};
+
+$('chan-delete').onclick = async () => {
+  const sel = $('chan-select'); const id = sel.value; const name = (sel.options[sel.selectedIndex]?.textContent || $('f-name').value || '').trim();
+  const msg = $('delete-msg');
+  if (sel.options.length <= 1) { msg.style.color = '#b3413a'; msg.textContent = 'Impossible de supprimer la seule chaîne. Crée-en une autre d\'abord.'; return; }
+  const typed = prompt('⚠️ Supprimer DÉFINITIVEMENT la chaîne « ' + name + " » de l'outil ?\n\nÇa efface ses vidéos (dans l'outil), assets, références et stats. Les vidéos déjà publiées sur YouTube ne sont PAS supprimées.\n\nTape le nom exact de la chaîne pour confirmer :");
+  if (typed == null) return;
+  if (typed.trim() !== name) { msg.style.color = '#b3413a'; msg.textContent = 'Nom incorrect — suppression annulée.'; return; }
+  msg.style.color = 'var(--color-mut2)'; msg.textContent = 'Suppression…';
+  try {
+    const d = await (await fetch('/api/channels/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })).json();
+    if (d.ok) location.reload();
+    else { msg.style.color = '#b3413a'; msg.textContent = 'Échec : ' + (d.error || 'inconnu'); }
+  } catch (e) { msg.style.color = '#b3413a'; msg.textContent = 'Erreur réseau'; }
 };
 
 $('chan-refresh').onclick = async () => {
