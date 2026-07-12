@@ -175,8 +175,9 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     // 4. Montage (le titre est incrusté sur le fond de la vidéo si l'option est activée pour la chaîne)
     await setStatus('rendering');
     await logStep('render', 'start');
+    // Pubs : uniquement si activées pour la chaîne (opt-in), sinon aucune même s'il y a des assets pub.
     const ads = [];
-    for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
+    if (channel?.ads_enabled) for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
     const outPath = join(workDir, 'video.mp4');
     ck();
     await renderVideo({

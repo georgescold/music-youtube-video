@@ -179,14 +179,23 @@
 
   <h2>Publicités dans la vidéo</h2>
   <div class="card">
-    <p class="hint" style="margin:-2px 0 14px">Fréquence et moments d'affichage des pubs. La <b>position de chaque pub</b> se règle dans l'onglet <b>Assets</b>, au moment de l'import (et se modifie ensuite avec « Position »).</p>
-    <div class="grid2">
-      <div class="field"><label>Fréquence des pubs (minutes)</label><input id="f-ad_freq" type="number" min="1" max="60"></div>
-      <div class="field"><label>Durée d'une apparition (secondes)</label><input id="f-ad_dur" type="number" min="2" max="60"></div>
+    <div class="field" style="margin-bottom:2px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px;font-weight:600;color:var(--color-ink)">
+        <input type="checkbox" id="f-ads_enabled" style="width:16px;height:16px;cursor:pointer">
+        Activer les publicités dans la vidéo
+      </label>
+      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Désactivé par défaut. Active pour incruster tes assets « Publicité » dans les vidéos de cette chaîne.</div>
     </div>
-    <div style="display:flex;gap:22px;margin-top:6px;font-size:13px">
-      <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_intro"> Afficher au début</label>
-      <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_outro"> Afficher à la fin</label>
+    <div id="ad-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:12px 0 0 3px;display:none">
+      <p class="hint" style="margin:0 0 14px">Fréquence et moments d'affichage des pubs. La <b>position de chaque pub</b> se règle dans l'onglet <b>Assets</b>, au moment de l'import (et se modifie ensuite avec « Position »).</p>
+      <div class="grid2">
+        <div class="field"><label>Fréquence des pubs (minutes)</label><input id="f-ad_freq" type="number" min="1" max="60"></div>
+        <div class="field"><label>Durée d'une apparition (secondes)</label><input id="f-ad_dur" type="number" min="2" max="60"></div>
+      </div>
+      <div style="display:flex;gap:22px;margin-top:6px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_intro"> Afficher au début</label>
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_outro"> Afficher à la fin</label>
+      </div>
     </div>
   </div>
 
@@ -326,6 +335,8 @@ async function loadSettings() {
   $('f-ad_dur').value = s.settings.ad_duration_sec ?? 8;
   $('f-ad_intro').checked = s.settings.ad_intro !== false;
   $('f-ad_outro').checked = s.settings.ad_outro !== false;
+  $('f-ads_enabled').checked = s.settings.ads_enabled === true;
+  syncAds();
   $('f-background_mode').value = s.settings.background_mode || 'slideshow';
   $('f-slideshow_count').value = s.settings.slideshow_count ?? 0;
   $('f-reuse_gap').value = s.settings.reuse_gap ?? 30;
@@ -384,6 +395,10 @@ function syncBgMode() {
 }
 $('f-background_mode').addEventListener('change', syncBgMode);
 
+// Pubs opt-in : le panneau ne se déplie que si les pubs sont activées.
+function syncAds() { $('ad-opts').style.display = $('f-ads_enabled').checked ? '' : 'none'; }
+$('f-ads_enabled').addEventListener('change', syncAds);
+
 function syncThumb() {
   $('thumb-opts').style.display = $('f-thumbnail_enabled').checked ? '' : 'none';
   $('thumb-font-wrap').style.display = $('f-thumbnail_text').checked ? '' : 'none';
@@ -399,6 +414,7 @@ $('save').onclick = async () => {
     epidemic_jwt: $('f-epidemic_jwt').value, claude_token: $('f-claude_token').value,
     publish_time_start: $('f-publish_time_start').value, publish_time_end: $('f-publish_time_end').value,
     target_min_min: Number($('f-target_min').value), target_max_min: Number($('f-target_max').value), utm_base: $('f-utm_base').value,
+    ads_enabled: $('f-ads_enabled').checked,
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
     ad_intro: $('f-ad_intro').checked, ad_outro: $('f-ad_outro').checked,
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),

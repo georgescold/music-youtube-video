@@ -870,6 +870,7 @@ const server = http.createServer(async (req, res) => {
       if (isHHMM(b.publish_time_start)) patch.publish_time_start = b.publish_time_start;
       if (isHHMM(b.publish_time_end)) patch.publish_time_end = b.publish_time_end;
       if (isHHMM(b.publish_time_start)) patch.daily_publish_time = b.publish_time_start; // rétro-compat
+      if (typeof b.ads_enabled === 'boolean') patch.ads_enabled = b.ads_enabled;
       if (b.ad_frequency_min != null) patch.ad_frequency_min = Math.max(1, Number(b.ad_frequency_min) || 10);
       if (b.ad_duration_sec != null) patch.ad_duration_sec = Math.max(2, Number(b.ad_duration_sec) || 8);
       if (b.ad_placement && typeof b.ad_placement === 'object') patch.ad_placement = b.ad_placement;
