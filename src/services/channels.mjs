@@ -3,9 +3,12 @@ import { dbSelect, dbInsert, dbPatch, dbDelete } from './supabase.mjs';
 import { encrypt, decrypt, mask } from './crypto.mjs';
 
 const SENSITIVE = ['yt_client_secret', 'yt_refresh_token', 'epidemic_jwt', 'claude_token'];
-// Identifiants PARTAGÉS entre toutes les chaînes d'un même compte (mêmes accès Epidemic/Claude + même app OAuth Google).
-// Le refresh token YouTube et l'ID de chaîne restent, eux, propres à chaque chaîne.
-export const SHARED_ACCOUNT = ['epidemic_jwt', 'epidemic_cookies', 'claude_token', 'yt_client_id', 'yt_client_secret'];
+// Identifiants PARTAGÉS (accès de COMPTE, mêmes pour toutes les chaînes) : Epidemic + Claude.
+// Le client OAuth Google (id/secret), le refresh token et l'ID de chaîne sont PROPRES À CHAQUE CHAÎNE
+// (une chaîne peut être sur un autre projet Google / un autre utilisateur / avoir son propre quota).
+export const SHARED_ACCOUNT = ['epidemic_jwt', 'epidemic_cookies', 'claude_token'];
+// Copiés d'une chaîne existante à la CRÉATION (défaut pratique), mais modifiables ensuite par chaîne — pas propagés.
+const INHERIT_ON_CREATE = [...SHARED_ACCOUNT, 'yt_client_id', 'yt_client_secret'];
 
 export async function listChannels() {
   return dbSelect('channels', '?order=created_at.asc');
@@ -19,10 +22,11 @@ export async function getActiveChannel() {
 }
 export async function createChannel(name) {
   await dbPatch('channels', 'is_active=eq.true', { is_active: false }).catch(() => {});
-  // Hérite des identifiants partagés d'une chaîne existante (valeurs déjà chiffrées, copiées telles quelles).
+  // Hérite (à la création) des accès partagés + du client OAuth par DÉFAUT (blobs chiffrés copiés tels quels).
+  // Le client OAuth devient alors PROPRE à la nouvelle chaîne (modifiable, non lié aux autres).
   const existing = (await listChannels())[0];
   const inherit = {};
-  if (existing) for (const k of SHARED_ACCOUNT) if (existing[k] != null) inherit[k] = existing[k];
+  if (existing) for (const k of INHERIT_ON_CREATE) if (existing[k] != null) inherit[k] = existing[k];
   const [ch] = await dbInsert('channels', [{ name: name || 'Nouvelle chaîne', is_active: true, ...inherit }]);
   return ch;
 }
