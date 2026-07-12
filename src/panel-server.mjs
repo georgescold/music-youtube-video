@@ -457,6 +457,26 @@ const server = http.createServer(async (req, res) => {
       const rows = await dbSelect('videos', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=created_at.desc&limit=50');
       return json(res, rows);
     }
+    // Tableau de bord d'accueil : statut auto (Live), compteurs, dernières vidéos + dernières actions.
+    if (req.method === 'GET' && path === '/api/home') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { channel: null });
+      const vids = await dbSelect('videos', `?channel_id=eq.${ch.id}&order=created_at.desc&limit=200&select=id,title,status,created_at,youtube_url,error`).catch(() => []);
+      const counts = { total: vids.length, published: 0, pending_review: 0, failed: 0 };
+      for (const v of vids) if (v.status in counts) counts[v.status]++;
+      const byId = Object.fromEntries(vids.map(v => [v.id, v.title]));
+      const ids = vids.slice(0, 30).map(v => v.id);
+      let actions = [];
+      if (ids.length) {
+        const logs = await dbSelect('run_logs', `?video_id=in.(${ids.join(',')})&order=created_at.desc&limit=14&select=step,status,message,created_at,video_id`).catch(() => []);
+        actions = logs.map(l => ({ step: l.step, status: l.status, message: l.message, created_at: l.created_at, title: byId[l.video_id] || '(vidéo)' }));
+      }
+      const today = await generatedToday(ch.id).catch(() => 0);
+      return json(res, {
+        channel: { name: ch.name, cron_enabled: !!ch.cron_enabled, publish_mode: ch.publish_mode || 'review', max_posts_per_day: ch.max_posts_per_day || 1, publish_time_start: ch.publish_time_start || null, publish_time_end: ch.publish_time_end || null },
+        counts, today, recent: vids.slice(0, 6), actions
+      });
+    }
     if (req.method === 'GET' && path === '/api/videos/status') {
       const since = Math.max(0, Number(q.get('since')) || 0); // n'envoie que les nouvelles lignes de journal
       return json(res, {
