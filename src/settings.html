@@ -256,6 +256,14 @@
     </div>
     <div class="field"><input id="f-discord_webhook" placeholder="https://discord.com/api/webhooks/…"></div>
     <div class="result" id="r-discord"></div>
+    <div id="notif-block" style="margin-top:18px;display:none">
+      <div class="card-title" style="font-size:13px;margin-bottom:3px">Notifications à recevoir</div>
+      <div class="card-desc" style="margin-bottom:10px">Coche ce que tu veux recevoir sur Discord (propre à cette chaîne).</div>
+      <div id="notif-list"></div>
+      <div class="field" style="max-width:260px;margin-top:14px"><label>Heure du rapport quotidien</label>
+        <input id="f-daily_report_hour" type="number" min="0" max="23" style="width:100%"><div class="hint">Heure (0–23) d'envoi du récap quotidien.</div>
+      </div>
+    </div>
   </div>
 
   <h2>CRON intelligent (coach)</h2>
@@ -340,6 +348,33 @@ async function loadSettings() {
   syncThumb();
   $('f-publish_mode').value = s.publish_mode || 'review';
   $('f-discord_webhook').placeholder = (s.discord && s.discord.configured) ? '•••• configuré — laisse vide pour ne pas changer' : 'https://discord.com/api/webhooks/…';
+  buildNotifs(s);
+}
+
+// Construit les cases à cocher des notifications, groupées, depuis notif_types + les préférences de la chaîne.
+function buildNotifs(s) {
+  const types = s.notif_types; const list = $('notif-list');
+  if (!types || !list) return;
+  $('notif-block').style.display = '';
+  const prefs = s.discord_notifs || {};
+  const groups = {};
+  for (const [key, t] of Object.entries(types)) { (groups[t.group] = groups[t.group] || []).push([key, t]); }
+  list.innerHTML = '';
+  for (const [group, items] of Object.entries(groups)) {
+    const h = document.createElement('div'); h.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--color-mut);font-weight:700;margin:12px 0 6px'; h.textContent = group; list.appendChild(h);
+    for (const [key, t] of items) {
+      const on = (key in prefs) ? prefs[key] !== false : t.def !== false;
+      const lab = document.createElement('label'); lab.style.cssText = 'display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:var(--color-ink);padding:3px 0';
+      lab.innerHTML = '<input type="checkbox" data-notif="' + key + '" style="width:15px;height:15px;cursor:pointer"' + (on ? ' checked' : '') + '> ' + t.label;
+      list.appendChild(lab);
+    }
+  }
+  $('f-daily_report_hour').value = s.daily_report_hour ?? 8;
+}
+function collectNotifs() {
+  const out = {};
+  document.querySelectorAll('#notif-list input[data-notif]').forEach(el => { out[el.dataset.notif] = el.checked; });
+  return out;
 }
 
 function syncBgMode() {
@@ -372,7 +407,8 @@ $('save').onclick = async () => {
     thumbnail_enabled: $('f-thumbnail_enabled').checked,
     thumbnail_text: $('f-thumbnail_text').checked, thumbnail_font: $('f-thumbnail_font').value,
     video_text: $('f-video_text').checked,
-    publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value
+    publish_mode: $('f-publish_mode').value, discord_webhook: $('f-discord_webhook').value,
+    discord_notifs: collectNotifs(), daily_report_hour: Number($('f-daily_report_hour').value)
   };
   const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
   $('save').disabled = false;

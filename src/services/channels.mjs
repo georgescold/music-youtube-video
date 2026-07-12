@@ -42,7 +42,7 @@ export async function setActiveChannel(id) {
 }
 export async function updateChannel(id, patch) {
   const p = {};
-  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'yt_handle', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'coach_enabled', 'max_posts_per_day', 'coach_state', 'coach_updated_at', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'video_text', 'background_mode', 'slideshow_count', 'reuse_gap',
+  const plain = ['name', 'yt_client_id', 'yt_channel_id', 'yt_handle', 'daily_publish_time', 'target_duration_sec', 'target_min_sec', 'target_max_sec', 'publish_time_start', 'publish_time_end', 'utm_base', 'ad_frequency_min', 'ad_duration_sec', 'ad_intro', 'ad_outro', 'discord_webhook', 'publish_mode', 'cron_enabled', 'coach_enabled', 'max_posts_per_day', 'coach_state', 'coach_updated_at', 'thumbnail_enabled', 'thumbnail_text', 'thumbnail_font', 'video_text', 'background_mode', 'slideshow_count', 'reuse_gap', 'discord_notifs', 'daily_report_hour', 'stats_daily',
     'objective', 'product_desc', 'affiliate_url', 'affiliate_label', 'inspiration_urls', 'playbook', 'playbook_updated_at',
     'emotion_palette', 'emotion_cursor', 'emotion_palette_updated_at', 'emotion_from_image', 'seo_plan', 'seo_plan_updated_at'];
   for (const k of plain) if (k in patch) p[k] = patch[k];
@@ -76,6 +76,8 @@ export function channelPublicView(ch) {
     coach_enabled: !!ch.coach_enabled,
     stats_daily: ch.stats_daily === true,
     stats_updated_at: ch.stats_updated_at || null,
+    discord_notifs: (ch.discord_notifs && typeof ch.discord_notifs === 'object') ? ch.discord_notifs : {},
+    daily_report_hour: ch.daily_report_hour ?? 8,
     max_posts_per_day: ch.max_posts_per_day || 1,
     coach_state: ch.coach_state || null,
     coach_updated_at: ch.coach_updated_at || null,

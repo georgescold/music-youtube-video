@@ -13,7 +13,7 @@ import { uploadVideo, setPrivacyStatus, setThumbnail, deleteVideo } from './serv
 import { getActiveChannel, updateChannel, channelCreds } from './services/channels.mjs';
 import { analyzeImage } from './services/vision.mjs';
 import { chooseEmotionIndex } from './steps/coach.mjs';
-import { sendDiscord, COLORS } from './services/notify.mjs';
+import { sendDiscord, notifyChannel, COLORS } from './services/notify.mjs';
 import { createEpidemicClient, isEpidemicAuthError, EPIDEMIC_AUTH_MESSAGE } from './services/epidemicMcp.mjs';
 
 const MOODS = ['romantique et doux', 'romantique nostalgique', 'romantique piano', 'romantique nuit', 'romantique acoustique'];
@@ -61,6 +61,8 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
   const setStatus = (status, extra = {}) => dbPatch('videos', `id=eq.${vid}`, { status, ...extra });
   const logStep = (step, status, message = null) => { log(`[${step}] ${status}${message ? ' — ' + message : ''}`); return dbInsert('run_logs', [{ video_id: vid, step, status, message }]).catch(() => {}); };
 
+  if (!dryRun) notifyChannel(channel, 'gen_started', { title: '⏳ Génération démarrée', description: 'Nouvelle vidéo en préparation sur « ' + (channel?.name || '') + ' ».', color: COLORS.info });
+
   const workDir = join(tmpdir(), 'abm-' + vid);
   mkdirSync(workDir, { recursive: true });
   let youtubeId = null, youtubeUrl = null; // hoisté pour le nettoyage en cas d'annulation
@@ -89,7 +91,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       } else if (sel.warning) {
         bgWarning = sel.warning;
         await logStep('background', 'warn', sel.warning);
-        if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: '⚠️ Images de fond', description: sel.warning, color: COLORS.warn }).catch(() => {});
+        notifyChannel(channel, 'backgrounds_low', { title: '⚠️ Images de fond bientôt épuisées', description: sel.warning, color: COLORS.warn });
       }
       chosenBgAssets = [...bgVideoAssets, ...chosen];
     }
@@ -256,13 +258,16 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     });
     await logStep('done', 'ok');
 
-    if (channel?.discord_webhook) {
-      const published = finalStatus === 'published';
-      sendDiscord(channel.discord_webhook, {
-        title: published ? '✅ Vidéo publiée' : '📝 Nouveau brouillon à valider',
-        description: `**${meta.title}**\n${youtubeUrl || '(dry-run)'}`,
-        color: COLORS.ok, url: youtubeUrl || undefined
-      }).catch(() => {});
+    if (finalStatus === 'published') {
+      notifyChannel(channel, 'video_published', {
+        title: '✅ Vidéo publiée', description: `**${meta.title}**\n${youtubeUrl || ''}`,
+        color: COLORS.ok, url: youtubeUrl || undefined, image: thumbnailUrl || undefined
+      });
+    } else if (finalStatus === 'pending_review') {
+      notifyChannel(channel, 'video_review', {
+        title: '📝 Vidéo à valider', description: `**${meta.title}**\nRelis puis publie : ${youtubeUrl || ''}`,
+        color: COLORS.info, url: youtubeUrl || undefined, image: thumbnailUrl || undefined
+      });
     }
     return { videoId: vid, youtubeId, title: meta.title, status: finalStatus };
   } catch (e) {
@@ -273,12 +278,16 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       await dbDelete('videos', `id=eq.${vid}`).catch(() => setStatus('cancelled').catch(() => {}));
       await logStep('cancelled', 'ok', 'génération annulée par l\'utilisateur').catch(() => {});
     } else {
-      // Jeton Epidemic refusé (401) : message clair + tag 'epidemic_auth' pour la reprise auto au save d'un jeton frais.
+      // Type d'échec : Epidemic (jeton) / YouTube (jeton) / autre -> message clair + notif ciblée.
       const authErr = isEpidemicAuthError(e);
-      const msg = authErr ? EPIDEMIC_AUTH_MESSAGE : String(e.message || e);
-      await setStatus('failed', { error: msg, note: authErr ? 'epidemic_auth' : null }).catch(() => {});
+      const raw = String(e.message || e);
+      const ytAuthErr = !authErr && /refresh token|client secret|compte YouTube connecté|credentials YouTube|invalid_grant|401 Unauthorized/i.test(raw);
+      const msg = authErr ? EPIDEMIC_AUTH_MESSAGE : raw;
+      await setStatus('failed', { error: msg, note: authErr ? 'epidemic_auth' : (ytAuthErr ? 'youtube_auth' : null) }).catch(() => {});
       await logStep('error', 'fail', msg);
-      if (channel?.discord_webhook) sendDiscord(channel.discord_webhook, { title: authErr ? '🔑 Epidemic déconnecté' : '❌ Échec de génération vidéo', description: msg.slice(0, 800), color: COLORS.error }).catch(() => {});
+      if (authErr) notifyChannel(channel, 'epidemic_auth', { title: '🔑 Epidemic déconnecté', description: msg.slice(0, 800), color: COLORS.error });
+      else if (ytAuthErr) notifyChannel(channel, 'youtube_auth', { title: '🔴 YouTube déconnecté', description: 'Le compte YouTube de « ' + (channel?.name || '') + ' » n\'est plus autorisé (jeton expiré). Reconnecte-le pour reprendre les publications.\n\n' + raw.slice(0, 500), color: COLORS.error });
+      else notifyChannel(channel, 'gen_failed', { title: '❌ Échec de génération', description: msg.slice(0, 800), color: COLORS.error });
     }
     throw e;
   } finally {

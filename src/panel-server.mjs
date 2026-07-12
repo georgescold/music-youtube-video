@@ -16,7 +16,8 @@ import { rmSync } from 'node:fs';
 import { testYouTube, testEpidemic, testClaude } from './services/connectionTests.mjs';
 import { EPIDEMIC_AUTH_MESSAGE } from './services/epidemicMcp.mjs';
 import { listChannels, getActiveChannel, getChannel, createChannel, setActiveChannel, updateChannel, channelCreds, channelPublicView, propagateSharedCreds } from './services/channels.mjs';
-import { sendDiscord, isDiscordWebhook, COLORS } from './services/notify.mjs';
+import { sendDiscord, notifyChannel, notifEnabled, NOTIF_TYPES, isDiscordWebhook, COLORS } from './services/notify.mjs';
+import { sendDailyDigest, sendWeeklyRecap } from './steps/digest.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
 import { deriveEmotions } from './steps/emotions.mjs';
 import { generateSeoPlan } from './steps/seoPlan.mjs';
@@ -48,6 +49,7 @@ const genState = { running: false, videoId: null, phase: null, error: null, canc
 let genTimer = null;
 let coachTimer = null;
 let statsTimer = null;
+let weeklyTimer = null;
 let genController = null;
 
 function generateOnce({ dryRun = false, targetSec = null, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null } = {}) {
@@ -146,7 +148,7 @@ async function runCoach({ force = false } = {}) {
       (s.recommendations || []).length ? '\nDécisions :\n• ' + s.recommendations.join('\n• ') : '',
       s.needs_reauth ? '\n⚠️ Ré-autorise l\'accès YouTube pour les métriques Analytics (CTR/rétention).' : ''
     ].filter(Boolean).join('\n');
-    sendDiscord(ch.discord_webhook, { title: '🧠 Rapport du coach — ' + ch.name, description: lines.slice(0, 1800), color: COLORS.info }).catch(() => {});
+    notifyChannel(ch, 'coach_report', { title: '🧠 Rapport du coach — ' + ch.name, description: lines.slice(0, 1800), color: COLORS.info });
   }
   return r;
 }
@@ -161,12 +163,32 @@ async function refreshStats(ch) {
 // Planifie une MàJ quotidienne des stats (~08:00) pour la chaîne active, si stats_daily est activé.
 async function setupStatsRefresh() {
   if (statsTimer) clearTimeout(statsTimer);
+  const ch0 = await getActiveChannel().catch(() => null);
+  const hour = Math.max(0, Math.min(23, ch0?.daily_report_hour ?? 8));
   const now = new Date();
-  const at = new Date(now); at.setHours(8, 0, 0, 0); if (at <= now) at.setDate(at.getDate() + 1);
+  const at = new Date(now); at.setHours(hour, 0, 0, 0); if (at <= now) at.setDate(at.getDate() + 1);
   statsTimer = setTimeout(async () => {
     const ch = await getActiveChannel().catch(() => null);
-    if (ch?.stats_daily) { console.log('[stats] MàJ quotidienne'); await refreshStats(ch).catch(e => console.error('[stats]', e.message)); }
+    if (ch) {
+      // On rafraîchit les stats si la MàJ auto est activée OU si une notif quotidienne en a besoin.
+      const wantsStatsNotif = ch.discord_webhook && (notifEnabled(ch, 'daily_report') || notifEnabled(ch, 'viral') || notifEnabled(ch, 'milestones'));
+      if (ch.stats_daily || wantsStatsNotif) { console.log('[stats] MàJ quotidienne'); await refreshStats(ch).catch(e => console.error('[stats]', e.message)); }
+      await sendDailyDigest(ch).catch(e => console.error('[digest]', e.message));
+    }
     setupStatsRefresh();
+  }, at - now);
+}
+// Récap hebdomadaire (lundi ~09:00) pour la chaîne active.
+async function setupWeeklyRecap() {
+  if (weeklyTimer) clearTimeout(weeklyTimer);
+  const now = new Date();
+  const at = new Date(now); at.setHours(9, 0, 0, 0);
+  let add = (1 - at.getDay() + 7) % 7; if (add === 0 && at <= now) add = 7; // prochain lundi
+  at.setDate(at.getDate() + add);
+  weeklyTimer = setTimeout(async () => {
+    const ch = await getActiveChannel().catch(() => null);
+    if (ch) await sendWeeklyRecap(ch).catch(e => console.error('[recap]', e.message));
+    setupWeeklyRecap();
   }, at - now);
 }
 
@@ -571,7 +593,7 @@ const server = http.createServer(async (req, res) => {
       const preCh = await getActiveChannel();
       const preEp = await testEpidemic({ jwt: channelCreds(preCh).epidemicJwt, cookies: channelCreds(preCh).epidemicCookies }).catch(() => ({ ok: false }));
       if (!preEp.ok) {
-        if (preCh?.discord_webhook) sendDiscord(preCh.discord_webhook, { title: '🔑 Epidemic déconnecté', description: EPIDEMIC_AUTH_MESSAGE, color: COLORS.error }).catch(() => {});
+        notifyChannel(preCh, 'epidemic_auth', { title: '🔑 Epidemic déconnecté', description: EPIDEMIC_AUTH_MESSAGE, color: COLORS.error });
         return json(res, { ok: false, error: EPIDEMIC_AUTH_MESSAGE });
       }
       // Durée en fourchette (minutes) fournie à la génération manuelle -> tirage aléatoire ; sinon fourchette de la chaîne.
@@ -706,7 +728,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Paramètres (chaîne active) ──
     if (req.method === 'GET' && path === '/api/settings') {
-      return json(res, channelPublicView(await getActiveChannel()) || {});
+      return json(res, { ...(channelPublicView(await getActiveChannel()) || {}), notif_types: NOTIF_TYPES });
     }
     if (req.method === 'POST' && path === '/api/settings/save') {
       const b = await readJsonBody(req);
@@ -734,6 +756,13 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.ad_intro === 'boolean') patch.ad_intro = b.ad_intro;
       if (typeof b.ad_outro === 'boolean') patch.ad_outro = b.ad_outro;
       if (typeof b.discord_webhook === 'string' && b.discord_webhook.trim()) { const w = b.discord_webhook.trim(); if (isDiscordWebhook(w)) patch.discord_webhook = w; else return json(res, { ok: false, error: 'Webhook Discord invalide (https://discord.com/api/webhooks/…)' }); }
+      // Préférences de notifications par type (uniquement des booléens sur des types connus).
+      if (b.discord_notifs && typeof b.discord_notifs === 'object' && !Array.isArray(b.discord_notifs)) {
+        const clean = {};
+        for (const k of Object.keys(NOTIF_TYPES)) if (typeof b.discord_notifs[k] === 'boolean') clean[k] = b.discord_notifs[k];
+        patch.discord_notifs = clean;
+      }
+      if (b.daily_report_hour != null) patch.daily_report_hour = Math.max(0, Math.min(23, Number(b.daily_report_hour) || 8));
       if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       if (typeof b.coach_enabled === 'boolean') patch.coach_enabled = b.coach_enabled;
@@ -758,7 +787,7 @@ const server = http.createServer(async (req, res) => {
       await propagateSharedCreds(patch).catch(() => {});
       // Si la fenêtre horaire ou l'interrupteur du CRON a changé, on reprogramme.
       if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch || 'max_posts_per_day' in patch) setupScheduler().catch(() => {});
-      if ('stats_daily' in patch) setupStatsRefresh().catch(() => {});
+      if ('stats_daily' in patch || 'daily_report_hour' in patch) setupStatsRefresh().catch(() => {});
       // Reprise auto : un jeton Epidemic frais vient d'être collé -> si des vidéos avaient échoué faute d'Epidemic,
       // on nettoie ces tentatives mortes et on relance une génération automatiquement.
       let resumed = false;
@@ -769,7 +798,7 @@ const server = http.createServer(async (req, res) => {
           if (stuck.length) {
             await dbDelete('videos', `channel_id=eq.${ch.id}&status=eq.failed&note=eq.epidemic_auth`).catch(() => {});
             resumed = generateOnce({ dryRun: false });
-            if (updated.discord_webhook) sendDiscord(updated.discord_webhook, { title: '🔁 Epidemic reconnecté', description: `Jeton frais accepté — reprise automatique de la génération (${stuck.length} tentative(s) en échec nettoyée(s)).`, color: COLORS.ok }).catch(() => {});
+            notifyChannel(updated, 'epidemic_auth', { title: '🔁 Epidemic reconnecté', description: `Jeton frais accepté — reprise automatique de la génération (${stuck.length} tentative(s) en échec nettoyée(s)).`, color: COLORS.ok });
           }
         }
       }
@@ -858,6 +887,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Panel sur http://${HOST}:${PORT}`);
   setupScheduler().catch(e => console.error('[scheduler] init KO', e.message));
   setupStatsRefresh().catch(e => console.error('[stats] init KO', e.message));
+  setupWeeklyRecap().catch(e => console.error('[recap] init KO', e.message));
   setupCoach().catch(e => console.error('[coach] init KO', e.message));
   // Nettoyage des générations orphelines (interrompues par un redémarrage) -> marquées échec.
   dbPatch('videos', 'status=in.(curating,downloading,rendering,uploading)', { status: 'failed', error: 'interrompu par un redémarrage du serveur' })
