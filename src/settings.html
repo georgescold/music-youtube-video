@@ -251,6 +251,9 @@
       </label>
       <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Si activé : une vidéo est générée chaque jour dans la fenêtre horaire choisie. Si désactivé : rien ne se génère seul, tu génères manuellement via « Générer une vidéo ».</div>
     </div>
+    <div id="cron-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:-6px 0 16px 3px;display:none">
+      <div class="field" style="max-width:340px;margin:0"><label>Cadence max (vidéos/jour, plafond du warm-up)</label><input id="f-max_posts_per_day" type="number" min="1" max="10"><div class="hint">La cadence monte progressivement (warm-up) jusqu'à ce plafond selon l'âge et les perfs de la chaîne.</div></div>
+    </div>
     <div class="field"><label>Mode de publication</label>
       <select id="f-publish_mode" style="width:100%">
         <option value="review">Relecture — non répertorié, tu valides avant publication</option>
@@ -286,12 +289,13 @@
         Activer le coach (analyse quotidienne + décisions)
       </label>
     </div>
-    <div class="field" style="max-width:340px"><label>Cadence max (vidéos/jour, plafond du warm-up)</label><input id="f-max_posts_per_day" type="number" min="1" max="10"></div>
-    <div class="card-head" style="margin-top:8px">
-      <div><div class="card-title" style="font-size:13px">Analyse</div><div class="card-desc" id="coach-meta">Aucune analyse. Le coach a besoin de vidéos publiées avec des stats.</div></div>
-      <button class="btn btn-sec" id="coach-btn" type="button">Analyser maintenant</button>
+    <div id="coach-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:0 0 0 3px;display:none">
+      <div class="card-head" style="margin-top:2px">
+        <div><div class="card-title" style="font-size:13px">Analyse</div><div class="card-desc" id="coach-meta">Aucune analyse. Le coach a besoin de vidéos publiées avec des stats.</div></div>
+        <button class="btn btn-sec" id="coach-btn" type="button">Analyser maintenant</button>
+      </div>
+      <div id="coach-view" style="font-size:12.5px;color:var(--color-mut);white-space:pre-wrap;margin-top:8px"></div>
     </div>
-    <div id="coach-view" style="font-size:12.5px;color:var(--color-mut);white-space:pre-wrap;margin-top:8px"></div>
   </div>
 
   <div class="savebar">
@@ -353,6 +357,7 @@ async function loadSettings() {
   $('f-cron_enabled').checked = !!s.cron_enabled;
   $('f-coach_enabled').checked = !!s.coach_enabled;
   $('f-max_posts_per_day').value = s.max_posts_per_day || 1;
+  syncCron(); syncCoach();
   renderCoach(s.coach_state);
   $('f-thumbnail_enabled').checked = s.thumbnail_enabled !== false;
   $('f-thumbnail_text').checked = s.thumbnail_text !== false;
@@ -395,9 +400,13 @@ function syncBgMode() {
 }
 $('f-background_mode').addEventListener('change', syncBgMode);
 
-// Pubs opt-in : le panneau ne se déplie que si les pubs sont activées.
+// Options repliées si non activées, dépliées si activées (pubs, automatisation CRON, coach).
 function syncAds() { $('ad-opts').style.display = $('f-ads_enabled').checked ? '' : 'none'; }
 $('f-ads_enabled').addEventListener('change', syncAds);
+function syncCron() { $('cron-opts').style.display = $('f-cron_enabled').checked ? '' : 'none'; }
+$('f-cron_enabled').addEventListener('change', syncCron);
+function syncCoach() { $('coach-opts').style.display = $('f-coach_enabled').checked ? '' : 'none'; }
+$('f-coach_enabled').addEventListener('change', syncCoach);
 
 function syncThumb() {
   $('thumb-opts').style.display = $('f-thumbnail_enabled').checked ? '' : 'none';
