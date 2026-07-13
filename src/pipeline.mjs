@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dbSelect, dbInsert, dbPatch, dbDelete, storageSign } from './services/supabase.mjs';
 import { curatePlaylist, durationSec } from './steps/curate.mjs';
 import { downloadAll } from './steps/download.mjs';
-import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground, renderThumbnail } from './services/ffmpeg.mjs';
+import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground, renderThumbnail, getRegionLuminance } from './services/ffmpeg.mjs';
 import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus, setThumbnail, deleteVideo } from './services/youtube.mjs';
@@ -25,6 +25,26 @@ async function fetchAssetFile(asset, dir) {
   const path = join(dir, 'asset-' + asset.id + '.' + ext);
   writeFileSync(path, buf);
   return { path, isVideo: (asset.mime_type || '').startsWith('video') };
+}
+
+// Résout les variantes de contraste : deux assets pub partageant le même `variant_group` sont la MÊME pub,
+// déclinée pour un fond clair et un fond sombre (`contrast_variant`). Un seul est gardé — celui qui offre le
+// meilleur contraste avec le fond RÉELLEMENT choisi pour cette vidéo (luminance mesurée à sa position exacte).
+// Les pubs sans groupe (cas normal, immense majorité) traversent inchangées.
+export function resolveContrastVariants(adAssets, primaryImagePath, log = () => {}) {
+  const ungrouped = adAssets.filter(a => !a.variant_group);
+  const groups = new Map();
+  for (const a of adAssets) if (a.variant_group) { if (!groups.has(a.variant_group)) groups.set(a.variant_group, []); groups.get(a.variant_group).push(a); }
+  const resolved = [...ungrouped];
+  for (const [name, variants] of groups) {
+    if (variants.length === 1 || !primaryImagePath) { resolved.push(variants[0]); continue; } // rien à choisir
+    const lum = getRegionLuminance(primaryImagePath, variants[0].placement); // 0 (sombre) .. 255 (clair)
+    const wantTag = lum < 128 ? 'for_dark_bg' : 'for_light_bg';
+    const pick = variants.find(v => v.contrast_variant === wantTag) || variants[0];
+    log(`variante « ${name} » : fond ${lum < 128 ? 'sombre' : 'clair'} (luminance ${lum}) -> ${pick.filename || pick.id}`);
+    resolved.push(pick);
+  }
+  return resolved;
 }
 
 export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, titleOverride = '', backgroundAssetId = null, thumbnailAssetId = null, channelId = null, controller, log = () => {} } = {}) {
@@ -185,8 +205,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     const ads = [], constantAds = [];
     let usedAdIds = [];
     if (channel?.ads_enabled) {
-      const constantAssets = adAssets.filter(a => a.ad_mode === 'constant');
-      const periodicAssets = adAssets.filter(a => a.ad_mode !== 'constant');
+      // Choix intelligent de variante (contraste vs le fond réellement choisi), AVANT le split constant/ponctuel.
+      const resolvedAds = resolveContrastVariants(adAssets, primaryImagePath, log);
+      const constantAssets = resolvedAds.filter(a => a.ad_mode === 'constant');
+      const periodicAssets = resolvedAds.filter(a => a.ad_mode !== 'constant');
       const cursor = channel.ad_cursor || 0;
       const rotated = periodicAssets.length ? periodicAssets.map((_, i) => periodicAssets[(i + cursor) % periodicAssets.length]) : [];
       for (const a of constantAssets) constantAds.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });

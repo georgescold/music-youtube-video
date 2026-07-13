@@ -22,6 +22,27 @@ export function probeDuration(path) {
   return parseFloat(out) || 0;
 }
 
+// Luminance moyenne (0-255) d'une image, dans une RÉGION donnée (fractions 0..1, comme un placement de pub)
+// ou de l'image entière si omise. Sert au choix intelligent de variante de pub (contraste vs le fond).
+export function getRegionLuminance(imagePath, box) {
+  try {
+    let vf = 'format=gray';
+    if (box) {
+      const dims = execFileSync(FP, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', imagePath]).toString().trim();
+      const [w, h] = dims.split(',').map(Number);
+      if (w && h) {
+        const cw = Math.max(1, Math.min(w, Math.round(w * (box.w ?? 1))));
+        const ch = Math.max(1, Math.min(h, Math.round(h * (box.h ?? 1))));
+        const cx = Math.min(w - cw, Math.max(0, Math.round(w * (box.x ?? 0))));
+        const cy = Math.min(h - ch, Math.max(0, Math.round(h * (box.y ?? 0))));
+        vf = `crop=${cw}:${ch}:${cx}:${cy},format=gray`;
+      }
+    }
+    const out = execFileSync(FF, ['-y', '-i', imagePath, '-vf', `${vf},scale=1:1`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 4096 });
+    return out.length ? out[0] : 128;
+  } catch { return 128; } // neutre si la mesure échoue (ex : fond vidéo, fichier illisible)
+}
+
 // Exécution FFmpeg NON bloquante (spawn) + annulable : le child est enregistré dans `controller`
 // pour pouvoir le tuer depuis l'extérieur. Le serveur reste réactif pendant le montage.
 function runFF(args, { controller, label = 'ffmpeg' } = {}) {

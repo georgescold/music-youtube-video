@@ -598,6 +598,17 @@ const server = http.createServer(async (req, res) => {
       try { const [row] = await dbPatch('assets', `id=eq.${b.id}`, { ad_mode: b.ad_mode }); return json(res, { ok: true, asset: row }); }
       catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
+    // Variante de contraste d'une pub : `variant_group` (nom libre reliant 2 versions de la même pub) +
+    // `contrast_variant` ('for_light_bg'|'for_dark_bg'|'' pour aucune préférence). Choix auto au montage.
+    if (req.method === 'POST' && path === '/api/assets/variant') {
+      const b = await readJsonBody(req);
+      if (!b.id) return json(res, { ok: false, error: 'id requis' });
+      if (b.contrast_variant && !['for_light_bg', 'for_dark_bg'].includes(b.contrast_variant)) return json(res, { ok: false, error: 'contrast_variant invalide' });
+      try {
+        const [row] = await dbPatch('assets', `id=eq.${b.id}`, { variant_group: (b.variant_group || '').trim() || null, contrast_variant: b.contrast_variant || null });
+        return json(res, { ok: true, asset: row });
+      } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+    }
 
     // ── Chansons de référence ──
     if (req.method === 'GET' && path === '/api/references') {

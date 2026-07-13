@@ -121,7 +121,7 @@
   <h1>Assets</h1>
   <p class="page-sub">Bannières, clips et fonds utilisés dans les vidéos.</p>
 
-  <p class="page-sub" style="margin:-20px 0 20px">💡 Pour une <b>publicité</b> : choisis ensuite son <b>mode</b> (ponctuelle ou permanente), sa <b>position</b> (glisser-déposer), et mets-la en <b>pause</b> quand tu veux l'exclure sans la supprimer.</p>
+  <p class="page-sub" style="margin:-20px 0 20px">💡 Pour une <b>publicité</b> : choisis ensuite son <b>mode</b> (ponctuelle ou permanente), sa <b>position</b> (glisser-déposer), et mets-la en <b>pause</b> quand tu veux l'exclure sans la supprimer. Deux versions de la même pub (fond clair / fond sombre) ? Donne-leur le <b>même Groupe</b> et choisis quelle variante va avec quel fond — la mieux contrastée sera choisie automatiquement à la génération.</p>
   <h2>Déposer un asset</h2>
   <div class="kind-row">
     <label><input type="radio" name="kind" value="background" checked><span>Fond (image ou vidéo)</span></label>
@@ -267,7 +267,15 @@ function renderList() {
         ${isAd ? `<div class="field" style="margin-top:8px"><select class="mode-sel" style="width:100%;font-size:12px;padding:6px 8px">
           <option value="periodic"${a.ad_mode !== 'constant' ? ' selected' : ''}>⏱ Ponctuelle — apparaît à certains moments</option>
           <option value="constant"${a.ad_mode === 'constant' ? ' selected' : ''}>📌 Permanente — visible sur toute la vidéo</option>
-        </select></div>` : ''}
+        </select></div>
+        <div class="field" style="margin-top:6px;display:flex;gap:6px">
+          <input class="variant-group" placeholder="Groupe (ex : Logo)" title="Donne le même nom à 2 pubs pour qu'une seule soit choisie automatiquement selon le contraste du fond" value="${(a.variant_group || '').replace(/"/g, '&quot;')}" style="flex:1;font-size:12px;padding:6px 8px">
+          <select class="variant-contrast" style="flex:1;font-size:12px;padding:6px 8px">
+            <option value=""${!a.contrast_variant ? ' selected' : ''}>Toujours (pas de variante)</option>
+            <option value="for_light_bg"${a.contrast_variant === 'for_light_bg' ? ' selected' : ''}>Si fond clair</option>
+            <option value="for_dark_bg"${a.contrast_variant === 'for_dark_bg' ? ' selected' : ''}>Si fond sombre</option>
+          </select>
+        </div>` : ''}
         <div class="row">
           <a href="${a.url || '#'}" target="_blank">Aperçu ↗</a>
           <span style="display:flex;gap:6px">
@@ -292,6 +300,13 @@ function renderList() {
       await fetch('/api/assets/mode', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, ad_mode: modeSel.value }) });
       load();
     };
+    const variantGroupInp = div.querySelector('.variant-group'), variantContrastSel = div.querySelector('.variant-contrast');
+    const saveVariant = async () => {
+      await fetch('/api/assets/variant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, variant_group: variantGroupInp.value, contrast_variant: variantContrastSel.value }) });
+      load();
+    };
+    if (variantGroupInp) { variantGroupInp.onblur = saveVariant; variantGroupInp.onkeydown = (e) => { if (e.key === 'Enter') variantGroupInp.blur(); }; }
+    if (variantContrastSel) variantContrastSel.onchange = saveVariant;
     const posBtn = div.querySelector('.pos-btn');
     if (posBtn) posBtn.onclick = () => openPos(a);
     grid.appendChild(div);
