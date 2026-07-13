@@ -598,14 +598,31 @@ const server = http.createServer(async (req, res) => {
       try { const [row] = await dbPatch('assets', `id=eq.${b.id}`, { ad_mode: b.ad_mode }); return json(res, { ok: true, asset: row }); }
       catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
-    // Variante de contraste d'une pub : `variant_group` (nom libre reliant 2 versions de la même pub) +
-    // `contrast_variant` ('for_light_bg'|'for_dark_bg'|'' pour aucune préférence). Choix auto au montage.
+    // Pour quel fond CETTE pub (déjà liée à une autre via /api/assets/pair) est-elle prévue :
+    // 'for_light_bg'|'for_dark_bg'|'' (aucune préférence). Ne touche pas le lien (variant_group).
     if (req.method === 'POST' && path === '/api/assets/variant') {
       const b = await readJsonBody(req);
       if (!b.id) return json(res, { ok: false, error: 'id requis' });
       if (b.contrast_variant && !['for_light_bg', 'for_dark_bg'].includes(b.contrast_variant)) return json(res, { ok: false, error: 'contrast_variant invalide' });
       try {
-        const [row] = await dbPatch('assets', `id=eq.${b.id}`, { variant_group: (b.variant_group || '').trim() || null, contrast_variant: b.contrast_variant || null });
+        const [row] = await dbPatch('assets', `id=eq.${b.id}`, { contrast_variant: b.contrast_variant || null });
+        return json(res, { ok: true, asset: row });
+      } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+    }
+    // Associe DEUX pubs comme variantes de la MÊME pub (choix via un menu, pas un nom à taper en double) :
+    // partnerId fourni -> les deux prennent le même `variant_group` (clé déterministe, triée par id) ;
+    // partnerId vide -> délie CETTE pub (le partenaire redevient seul dans son groupe, sans effet).
+    if (req.method === 'POST' && path === '/api/assets/pair') {
+      const b = await readJsonBody(req);
+      if (!b.id) return json(res, { ok: false, error: 'id requis' });
+      try {
+        if (!b.partnerId) {
+          const [row] = await dbPatch('assets', `id=eq.${b.id}`, { variant_group: null, contrast_variant: null });
+          return json(res, { ok: true, asset: row });
+        }
+        const groupKey = [b.id, b.partnerId].sort().join('_');
+        const [row] = await dbPatch('assets', `id=eq.${b.id}`, { variant_group: groupKey });
+        await dbPatch('assets', `id=eq.${b.partnerId}`, { variant_group: groupKey }).catch(() => {});
         return json(res, { ok: true, asset: row });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }

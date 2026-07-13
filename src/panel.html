@@ -92,6 +92,7 @@
   /* Contrôles de pub (mode, groupe de variante) : même langage visuel que le reste de l'outil
      (coins arrondis, bordure fine, police Manrope) plutôt que le rendu natif du navigateur. */
   .ad-ctrl { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .ad-ctrl-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--color-mut); margin-top: 4px; }
   .ad-ctrl-row { display: flex; gap: 6px; }
   .field-sel, .field-inp {
     width: 100%; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--color-ink);
@@ -139,7 +140,7 @@
   <h1>Assets</h1>
   <p class="page-sub">Bannières, clips et fonds utilisés dans les vidéos.</p>
 
-  <p class="page-sub" style="margin:-20px 0 20px">💡 Pour une <b>publicité</b> : choisis ensuite son <b>mode</b> (ponctuelle ou permanente), sa <b>position</b> (glisser-déposer), et mets-la en <b>pause</b> quand tu veux l'exclure sans la supprimer. Deux versions de la même pub (fond clair / fond sombre) ? Donne-leur le <b>même Groupe</b> et choisis quelle variante va avec quel fond — la mieux contrastée sera choisie automatiquement à la génération.</p>
+  <p class="page-sub" style="margin:-20px 0 20px">💡 Pour une <b>publicité</b> : choisis ensuite son <b>mode</b> (ponctuelle ou permanente), sa <b>position</b> (glisser-déposer), et mets-la en <b>pause</b> quand tu veux l'exclure sans la supprimer. Deux versions de la même pub (fond clair / fond sombre) ? Dans <b>« Sélecteur intelligent »</b>, choisis l'autre pub dans le menu pour les lier, puis indique pour quel fond chacune est prévue — la mieux contrastée sera choisie automatiquement à chaque vidéo.</p>
   <h2>Déposer un asset</h2>
   <div class="kind-row">
     <label><input type="radio" name="kind" value="background" checked><span>Fond (image ou vidéo)</span></label>
@@ -272,6 +273,9 @@ function renderList() {
     const isVid = (a.mime_type || '').startsWith('video/');
     const isAd = a.kind === 'ad';
     const isPaused = a.active === false;
+    // Partenaire actuel (autre pub partageant le même variant_group) -> pré-sélectionné dans le menu.
+    const partner = (isAd && a.variant_group) ? allAssets.find(x => x.kind === 'ad' && x.id !== a.id && x.variant_group === a.variant_group) : null;
+    const otherAds = isAd ? allAssets.filter(x => x.kind === 'ad' && x.id !== a.id) : [];
     div.innerHTML = `
       <div class="prev" style="${isPaused ? 'opacity:.45' : ''}">${
         a.url && isImg ? '<img src="' + a.url + '" alt="">' :
@@ -279,7 +283,7 @@ function renderList() {
         '<span class="icon">📄</span>'
       }</div>
       <div class="body">
-        <span class="badge">${KIND_LABEL[a.kind] || a.kind}</span>${isPaused ? ' <span class="badge" style="background:#f2e2c8;color:#7a5a12;border-color:#e3caa0">⏸ En pause</span>' : ''}
+        <span class="badge">${KIND_LABEL[a.kind] || a.kind}</span>${isPaused ? ' <span class="badge" style="background:#f2e2c8;color:#7a5a12;border-color:#e3caa0">⏸ En pause</span>' : ''}${partner ? ' <span class="badge" style="background:#dcecf5;color:#1b5e82;border-color:#bcdcee">🔗 Liée</span>' : ''}
         <div class="name" title="${a.filename}">${a.filename}</div>
         <div class="meta tnum"><span>${fmtSize(a.size_bytes)}</span><span>${fmtDate(a.uploaded_at)}</span></div>
         ${isAd ? `<div class="ad-ctrl">
@@ -287,14 +291,16 @@ function renderList() {
             <option value="periodic"${a.ad_mode !== 'constant' ? ' selected' : ''}>⏱ Ponctuelle</option>
             <option value="constant"${a.ad_mode === 'constant' ? ' selected' : ''}>📌 Permanente</option>
           </select>
-          <div class="ad-ctrl-row">
-            <input class="variant-group field-inp" placeholder="Groupe (variante)" title="Donne le même nom à 2 pubs pour qu'une seule soit choisie automatiquement selon le contraste du fond" value="${(a.variant_group || '').replace(/"/g, '&quot;')}" style="flex:1.3">
-            <select class="variant-contrast field-sel" style="flex:1" title="Pour quel fond cette version est-elle prévue ?">
-              <option value=""${!a.contrast_variant ? ' selected' : ''}>Toujours</option>
-              <option value="for_light_bg"${a.contrast_variant === 'for_light_bg' ? ' selected' : ''}>Fond clair</option>
-              <option value="for_dark_bg"${a.contrast_variant === 'for_dark_bg' ? ' selected' : ''}>Fond sombre</option>
-            </select>
-          </div>
+          <label class="ad-ctrl-label">Sélecteur intelligent (contraste avec le fond)</label>
+          <select class="variant-partner field-sel" title="Choisis l'autre version de cette pub (ex : fond clair/fond sombre) pour que l'outil choisisse automatiquement la mieux contrastée à chaque vidéo.">
+            <option value="">— Pub seule (pas de variante) —</option>
+            ${otherAds.map(o => `<option value="${o.id}"${partner && partner.id === o.id ? ' selected' : ''}>${o.filename}</option>`).join('')}
+          </select>
+          ${partner ? `<select class="variant-contrast field-sel" title="Pour quel fond CETTE version (${a.filename}) est-elle prévue ?">
+            <option value=""${!a.contrast_variant ? ' selected' : ''}>— Choisis pour quel fond —</option>
+            <option value="for_light_bg"${a.contrast_variant === 'for_light_bg' ? ' selected' : ''}>☀️ Cette version : fond clair</option>
+            <option value="for_dark_bg"${a.contrast_variant === 'for_dark_bg' ? ' selected' : ''}>🌙 Cette version : fond sombre</option>
+          </select>` : ''}
         </div>` : ''}
         <div class="row">
           <a href="${a.url || '#'}" target="_blank">Aperçu ↗</a>
@@ -320,13 +326,16 @@ function renderList() {
       await fetch('/api/assets/mode', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, ad_mode: modeSel.value }) });
       load();
     };
-    const variantGroupInp = div.querySelector('.variant-group'), variantContrastSel = div.querySelector('.variant-contrast');
-    const saveVariant = async () => {
-      await fetch('/api/assets/variant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, variant_group: variantGroupInp.value, contrast_variant: variantContrastSel.value }) });
+    const variantPartnerSel = div.querySelector('.variant-partner');
+    if (variantPartnerSel) variantPartnerSel.onchange = async () => {
+      await fetch('/api/assets/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, partnerId: variantPartnerSel.value || null }) });
       load();
     };
-    if (variantGroupInp) { variantGroupInp.onblur = saveVariant; variantGroupInp.onkeydown = (e) => { if (e.key === 'Enter') variantGroupInp.blur(); }; }
-    if (variantContrastSel) variantContrastSel.onchange = saveVariant;
+    const variantContrastSel = div.querySelector('.variant-contrast');
+    if (variantContrastSel) variantContrastSel.onchange = async () => {
+      await fetch('/api/assets/variant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, contrast_variant: variantContrastSel.value }) });
+      load();
+    };
     const posBtn = div.querySelector('.pos-btn');
     if (posBtn) posBtn.onclick = () => openPos(a);
     grid.appendChild(div);
