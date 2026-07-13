@@ -77,6 +77,19 @@ function generateOnce({ dryRun = false, targetSec = null, titleOverride = '', ba
 }
 
 function toMinOfDay(hhmm) { const [h, m] = String(hhmm || '18:00').slice(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); }
+// Minute-cible d'un créneau pour AUJOURD'HUI. « HH:MM » = exact ; « HH:MM-HH:MM » = fourchette : heure tirée
+// au hasard MAIS stable dans la journée (hash du jour+index -> pas de jitter entre les ticks du cerveau).
+function slotTargetMin(slot, index, dayKey) {
+  const m = String(slot || '').match(/^(\d{2}):(\d{2})(?:-(\d{2}):(\d{2}))?$/);
+  if (!m) return null;
+  const a = (+m[1]) * 60 + (+m[2]);
+  const b = m[3] != null ? (+m[3]) * 60 + (+m[4]) : a;
+  const lo = Math.min(a, b), hi = Math.max(a, b), span = hi - lo;
+  if (span === 0) return lo;
+  let h = 0; const s = dayKey + '#' + index;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return lo + (h % (span + 1));
+}
 function windowDates(start, end, now) {
   let a = toMinOfDay(start), b = toMinOfDay(end); if (b < a) b += 1440;
   const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
@@ -131,12 +144,14 @@ async function brainTick() {
   const todayKey = now.toISOString().slice(0, 10);
   const nowMin = now.getHours() * 60 + now.getMinutes();
   for (const ch of shuffle(chans)) { // mélange = équité entre chaînes
-    // Planning : soit des HEURES explicites (nb d'heures = nb de vidéos/jour), soit repli fenêtre + warm-up.
-    const times = Array.isArray(ch.publish_times) ? ch.publish_times.filter(t => /^\d{2}:\d{2}$/.test(t)) : [];
+    // Planning : mode « fixed » = créneaux-fourchettes fixés à la main ; mode « auto » = fenêtre + warm-up.
+    const times = Array.isArray(ch.publish_times) ? ch.publish_times.filter(t => /^\d{2}:\d{2}(-\d{2}:\d{2})?$/.test(t)) : [];
+    const modeFixed = ch.publish_schedule_mode === 'fixed' || (!ch.publish_schedule_mode && times.length > 0);
     let due;
-    if (times.length) {
-      due = times.filter(t => nowMin >= toMinOfDay(t)).length;          // nb de créneaux dont l'heure est déjà passée aujourd'hui
-      if (due === 0) continue;                                          // pas encore l'heure du 1er créneau
+    if (modeFixed) {
+      if (!times.length) continue;                                     // mode heures précises mais aucun créneau -> rien
+      due = times.filter((t, i) => nowMin >= slotTargetMin(t, i, todayKey)).length; // créneaux dont l'heure (tirée) est passée
+      if (due === 0) continue;                                         // pas encore l'heure du 1er créneau
     } else {
       const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
       const end = ch.publish_time_end || start;
@@ -910,11 +925,16 @@ const server = http.createServer(async (req, res) => {
         patch.target_duration_sec = mn * 60; // rétro-compat
       }
       const isHHMM = s => typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
-      // Heures de publication explicites (nb d'heures = nb de vidéos/jour). Triées, dédupliquées, plafonnées.
+      // Mode de planification : 'auto' (fenêtre + warm-up) ou 'fixed' (créneaux-fourchettes fixés à la main).
+      const schedMode = (b.publish_schedule_mode === 'fixed' || b.publish_schedule_mode === 'auto') ? b.publish_schedule_mode : null;
+      if (schedMode) patch.publish_schedule_mode = schedMode;
+      // Créneaux de publication : chacun « HH:MM » (exact) ou « HH:MM-HH:MM » (fourchette -> heure tirée au hasard).
+      const isSlot = s => typeof s === 'string' && /^\d{2}:\d{2}(-\d{2}:\d{2})?$/.test(s);
       if (Array.isArray(b.publish_times)) {
-        const times = [...new Set(b.publish_times.filter(isHHMM))].sort().slice(0, 8);
-        patch.publish_times = times;
-        if (times.length) patch.max_posts_per_day = Math.max(1, Math.min(10, times.length)); // cohérence cadence
+        let slots = [...new Set(b.publish_times.filter(isSlot))].sort().slice(0, 8);
+        if (schedMode === 'auto') slots = []; // en mode auto, aucune heure fixe
+        patch.publish_times = slots;
+        if (slots.length) patch.max_posts_per_day = Math.max(1, Math.min(10, slots.length)); // cohérence cadence
       }
       if (isHHMM(b.publish_time_start)) patch.publish_time_start = b.publish_time_start;
       if (isHHMM(b.publish_time_end)) patch.publish_time_end = b.publish_time_end;
@@ -938,7 +958,8 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.coach_enabled === 'boolean') patch.coach_enabled = b.coach_enabled;
       if (typeof b.stats_daily === 'boolean') patch.stats_daily = b.stats_daily;
       if (['sonnet', 'opus', 'haiku'].includes(b.claude_model)) patch.claude_model = b.claude_model;
-      if (b.max_posts_per_day != null) patch.max_posts_per_day = Math.max(1, Math.min(10, Number(b.max_posts_per_day) || 1));
+      // Cadence manuelle : seulement en mode auto (en mode fixe, elle est déjà dérivée du nb de créneaux ci-dessus).
+      if (b.max_posts_per_day != null && !(patch.publish_times && patch.publish_times.length)) patch.max_posts_per_day = Math.max(1, Math.min(10, Number(b.max_posts_per_day) || 1));
       if (typeof b.emotion_from_image === 'boolean') patch.emotion_from_image = b.emotion_from_image;
       if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
       if (typeof b.thumbnail_text === 'boolean') patch.thumbnail_text = b.thumbnail_text;
