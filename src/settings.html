@@ -95,6 +95,7 @@
     <p class="hint" style="margin:-2px 0 14px">Guide l'écriture des titres/descriptions : objectif, produit à promouvoir, lien d'affiliation mis en avant, et analyse des vidéos références.</p>
     <div class="field"><label>Objectif de la chaîne</label><textarea id="f-objective" rows="2" placeholder="Ex : toucher les femmes célibataires, donner envie de croire en l'amour, ramener vers l'app."></textarea></div>
     <div class="field"><label>Produit à promouvoir</label><textarea id="f-product_desc" rows="2" placeholder="Ex : Compaatible, l'app qui trouve les gens vraiment faits pour toi."></textarea></div>
+    <div class="field"><label>Site web du produit (analysé pour la stratégie SEO)</label><input id="f-product_url" placeholder="https://compaatible.com"><div style="font-size:12px;color:var(--color-mut);margin-top:4px">Le plan SEO est généré à partir de l'analyse de ce site (mix reach YouTube × produit) — auto-généré quand tu enregistres une nouvelle URL.</div></div>
     <div class="grid2">
       <div class="field"><label>Lien d'affiliation (mis en avant dans la description)</label><input id="f-affiliate_url" placeholder="https://…"></div>
       <div class="field"><label>Texte du lien (CTA)</label><input id="f-affiliate_label" placeholder="Teste ta compatibilité gratuitement"></div>
@@ -363,6 +364,7 @@ async function loadSettings() {
   const st = s.strategy || {};
   $('f-objective').value = st.objective || '';
   $('f-product_desc').value = st.product_desc || '';
+  $('f-product_url').value = st.product_url || '';
   $('f-affiliate_url').value = st.affiliate_url || '';
   $('f-affiliate_label').value = st.affiliate_label || '';
   renderPlaybook(st.playbook, st.playbook_updated_at);
@@ -455,7 +457,7 @@ $('save').onclick = async () => {
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
     ad_intro: $('f-ad_intro').checked, ad_outro: $('f-ad_outro').checked,
     background_mode: $('f-background_mode').value, slideshow_count: Number($('f-slideshow_count').value), reuse_gap: Number($('f-reuse_gap').value),
-    objective: $('f-objective').value, product_desc: $('f-product_desc').value,
+    objective: $('f-objective').value, product_desc: $('f-product_desc').value, product_url: $('f-product_url').value.trim(),
     affiliate_url: $('f-affiliate_url').value.trim(), affiliate_label: $('f-affiliate_label').value.trim(),
     emotion_from_image: $('f-emotion_from_image').checked,
     cron_enabled: $('f-cron_enabled').checked, coach_enabled: $('f-coach_enabled').checked, max_posts_per_day: Number($('f-max_posts_per_day').value),
@@ -528,6 +530,8 @@ function renderSeo(plan, updatedAt) {
     sec('Vivier de hashtags', (plan.hashtag_pool || []).slice(0, 24)) +
     sec('Conventions de titres', plan.title_conventions) +
     sec('Idées de CTA', plan.cta_ideas) +
+    (plan.product_bridge ? '▸ Pont produit (émotion ↔ besoin)\n   ' + plan.product_bridge + '\n\n' : '') +
+    (plan.source_site && plan.source_site.url ? '▸ Site analysé\n   ' + plan.source_site.url + '\n\n' : '') +
     (plan.internal_linking ? '▸ Maillage interne\n   ' + plan.internal_linking : '');
 }
 

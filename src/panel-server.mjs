@@ -191,6 +191,19 @@ async function runCoach({ force = false } = {}) {
 }
 
 // ── Mise à jour des stats (léger : snapshot vues/rétention -> video_stats). Manuel ou quotidien. ──
+// (Re)génère le plan SEO d'une chaîne en analysant le site du produit. Utilisé en arrière-plan
+// dès qu'un site produit est renseigné/changé — le SEO est ancré sur le vrai produit, par défaut.
+async function autoGenerateSeoPlan(ch) {
+  if (!ch) return;
+  try {
+    const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
+    const refs = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title`).catch(() => []);
+    const token = channelCreds(ch).claudeToken;
+    const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', productUrl: ch.product_url || '', inspirationUrls: urls, references: refs, token, model: ch.claude_model || 'sonnet', log: m => console.log('[seo:auto]', m) });
+    if (r.ok) { await updateChannel(ch.id, { seo_plan: r.plan, seo_plan_updated_at: new Date().toISOString() }); console.log('[seo:auto] plan généré pour', ch.name); }
+  } catch (e) { console.error('[seo:auto] KO', e.message); }
+}
+
 async function refreshStats(ch) {
   if (!ch) return { ok: false, error: 'aucune chaîne' };
   const r = await collectStats({ channel: ch, creds: channelCreds(ch).youtube, now: new Date(), log: m => console.log('[stats]', m) }).catch(e => ({ ok: false, error: e.message }));
@@ -920,7 +933,7 @@ const server = http.createServer(async (req, res) => {
       if (b.background_mode === 'single' || b.background_mode === 'slideshow') patch.background_mode = b.background_mode;
       if (b.slideshow_count != null) patch.slideshow_count = Math.max(0, Math.min(100, Number(b.slideshow_count) || 0));
       if (b.reuse_gap != null) patch.reuse_gap = Math.max(0, Math.min(365, Number(b.reuse_gap) || 0));
-      for (const k of ['objective', 'product_desc', 'affiliate_url', 'affiliate_label']) if (typeof b[k] === 'string') patch[k] = b[k].trim();
+      for (const k of ['objective', 'product_desc', 'product_url', 'affiliate_url', 'affiliate_label']) if (typeof b[k] === 'string') patch[k] = b[k].trim();
       if (Array.isArray(b.inspiration_urls)) patch.inspiration_urls = b.inspiration_urls.map(s => String(s).trim()).filter(Boolean).slice(0, 20);
       // Secrets : mis à jour uniquement si une nouvelle valeur non vide est fournie (sinon on conserve l'existant).
       for (const [field, incoming] of [['yt_client_secret', b.yt_client_secret], ['yt_refresh_token', b.yt_refresh_token], ['epidemic_jwt', b.epidemic_jwt], ['claude_token', b.claude_token]]) {
@@ -929,6 +942,10 @@ const server = http.createServer(async (req, res) => {
       const updated = await updateChannel(ch.id, patch);
       // Identifiants partagés du compte (Epidemic/Claude/OAuth client) -> répercutés sur TOUTES les chaînes.
       await propagateSharedCreds(patch).catch(() => {});
+      // SEO ancré sur le produit : dès qu'un site produit est renseigné/changé et qu'aucun plan n'existe encore
+      // (ou que l'URL vient de changer), on (re)génère le plan SEO en arrière-plan à partir de l'analyse du site.
+      const urlChanged = 'product_url' in patch && (patch.product_url || '') !== (ch.product_url || '');
+      if ((updated.product_url && !updated.seo_plan) || urlChanged) autoGenerateSeoPlan(updated).catch(() => {});
       // Si la fenêtre horaire ou l'interrupteur du CRON a changé, on reprogramme.
       if (patch.publish_time_start || patch.publish_time_end || 'cron_enabled' in patch || 'max_posts_per_day' in patch) setupScheduler().catch(() => {});
       if ('stats_daily' in patch || 'daily_report_hour' in patch) setupStatsRefresh().catch(() => {});
@@ -979,7 +996,7 @@ const server = http.createServer(async (req, res) => {
       const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
       const refs = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title`).catch(() => []);
       const token = channelCreds(ch).claudeToken;
-      const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', inspirationUrls: urls, references: refs, token, model: ch.claude_model || 'sonnet', log: m => console.log('[seo]', m) });
+      const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', productUrl: ch.product_url || '', inspirationUrls: urls, references: refs, token, model: ch.claude_model || 'sonnet', log: m => console.log('[seo]', m) });
       if (!r.ok) return json(res, { ok: false, error: r.error });
       const updated = await updateChannel(ch.id, { seo_plan: r.plan, seo_plan_updated_at: new Date().toISOString() });
       return json(res, { ok: true, plan: r.plan, channel: channelPublicView(updated) });
