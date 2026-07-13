@@ -37,7 +37,31 @@ function pickHashtags(plan, recentHashtags = [], count = 5) {
   return picked;
 }
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, seoPlan = null, recentHashtags = [], internalLinks = [], channelHandle = '', channelName = '', titleOverride = '', model = 'sonnet', token, log = () => {} }) {
+// Choisit les 1-2 articles de blog du produit les plus pertinents pour CETTE vidéo (thème/émotion).
+// Renvoie [{url,title}] (vide si rien de vraiment pertinent). Dégrade proprement sans token/articles.
+async function pickBlogLinks({ articles = [], title = '', emotion = null, keywords = [], model = 'sonnet', token, log = () => {} }) {
+  const list = (articles || []).filter(a => a && a.url && a.title).slice(0, 40);
+  if (!list.length || !token) return [];
+  try {
+    const system = "Tu relies une vidéo (playlist musicale) à des articles de blog d'un produit. Tu choisis UNIQUEMENT ceux dont le SUJET a un vrai rapport thématique/émotionnel avec la vidéo — la pertinence prime sur le remplissage. Réponds en JSON.";
+    const user = [
+      'VIDÉO — titre : ' + title,
+      emotion?.name ? 'Émotion : ' + emotion.name + (emotion.description ? ' (' + emotion.description + ')' : '') : '',
+      keywords?.length ? 'Mots-clés : ' + keywords.slice(0, 10).join(', ') : '',
+      '', 'ARTICLES DE BLOG DISPONIBLES :',
+      list.map((a, i) => `${i}. ${a.title}`).join('\n'), '',
+      'Choisis les 1 à 2 articles les PLUS pertinents pour un spectateur de cette vidéo (0 si aucun ne colle vraiment).',
+      'Format EXACT : {"idx":[numéros]}'
+    ].filter(Boolean).join('\n');
+    const j = extractJson(await askClaude(system, user, model, { token }));
+    const idx = Array.isArray(j.idx) ? j.idx : [];
+    const picked = [...new Set(idx.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n < list.length))].slice(0, 2).map(n => list[n]);
+    if (picked.length) log('articles de blog liés : ' + picked.map(a => a.title).join(' | '));
+    return picked;
+  } catch (e) { log('sélection blog KO : ' + e.message); return []; }
+}
+
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, seoPlan = null, recentHashtags = [], internalLinks = [], blogArticles = [], channelHandle = '', channelName = '', titleOverride = '', model = 'sonnet', token, log = () => {} }) {
   const pb = strategy.playbook || {};
   const plan = seoPlan || {};
   // Contexte SEO adaptatif : le domaine/ton vient de la chaîne (objectif + produit), pas d'un thème présupposé.
@@ -163,6 +187,12 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     ? '🎧 À écouter aussi :\n' + links.map(v => '• ' + stripTag(v.title) + ' : ' + v.url).join('\n')
     : '';
 
+  // Articles de blog du produit pertinents pour ce thème -> trafic de référence vers l'entonnoir (liens nofollow).
+  const blogPicks = await pickBlogLinks({ articles: blogArticles, title: meta.title, emotion, keywords: meta.keywords, model, token, log });
+  const blogBlock = blogPicks.length
+    ? '📖 À lire aussi :\n' + blogPicks.map(a => '• ' + String(a.title).replace(/\s+/g, ' ').trim() + ' : ' + a.url).join('\n')
+    : '';
+
   // Hashtags : rotation depuis le vivier du plan (variété) ; sinon ceux de Claude.
   const planTags = pickHashtags(plan, recentHashtags, 5);
   const hashtags = (planTags.length ? planTags : (meta.hashtags || []).map(h => String(h).replace(/^#/, '')).slice(0, 5)).filter(Boolean);
@@ -173,6 +203,7 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     '', 'CHAPITRES', chapters
   ];
   if (internalBlock) parts.push('', internalBlock);
+  if (blogBlock) parts.push('', blogBlock);
   parts.push(
     '', 'Mots-clés : ' + (meta.keywords || []).join(', '),
     '', hashtags.map(h => '#' + h).join(' '),

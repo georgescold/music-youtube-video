@@ -21,6 +21,7 @@ import { sendDailyDigest, sendWeeklyRecap } from './steps/digest.mjs';
 import { analyzeInspiration } from './steps/playbook.mjs';
 import { deriveEmotions } from './steps/emotions.mjs';
 import { generateSeoPlan } from './steps/seoPlan.mjs';
+import { fetchBlogArticles } from './services/webAnalyze.mjs';
 import { computeCadence, analyzeAndDecide, collectStats } from './steps/coach.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -200,7 +201,14 @@ async function autoGenerateSeoPlan(ch) {
     const refs = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title`).catch(() => []);
     const token = channelCreds(ch).claudeToken;
     const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', productUrl: ch.product_url || '', inspirationUrls: urls, references: refs, token, model: ch.claude_model || 'sonnet', log: m => console.log('[seo:auto]', m) });
-    if (r.ok) { await updateChannel(ch.id, { seo_plan: r.plan, seo_plan_updated_at: new Date().toISOString() }); console.log('[seo:auto] plan généré pour', ch.name); }
+    const patch = {};
+    if (r.ok) { patch.seo_plan = r.plan; patch.seo_plan_updated_at = new Date().toISOString(); }
+    // Articles de blog du produit (pour les liens « À lire aussi » dans les descriptions).
+    if (ch.product_url) {
+      const blog = await fetchBlogArticles(ch.product_url, { log: m => console.log('[blog:auto]', m) }).catch(() => ({ ok: false }));
+      if (blog.ok) { patch.blog_articles = blog.articles; patch.blog_articles_updated_at = new Date().toISOString(); }
+    }
+    if (Object.keys(patch).length) { await updateChannel(ch.id, patch); console.log('[seo:auto] MàJ pour', ch.name, '— plan:', r.ok, 'articles:', patch.blog_articles?.length ?? '—'); }
   } catch (e) { console.error('[seo:auto] KO', e.message); }
 }
 
@@ -998,8 +1006,13 @@ const server = http.createServer(async (req, res) => {
       const token = channelCreds(ch).claudeToken;
       const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', productUrl: ch.product_url || '', inspirationUrls: urls, references: refs, token, model: ch.claude_model || 'sonnet', log: m => console.log('[seo]', m) });
       if (!r.ok) return json(res, { ok: false, error: r.error });
-      const updated = await updateChannel(ch.id, { seo_plan: r.plan, seo_plan_updated_at: new Date().toISOString() });
-      return json(res, { ok: true, plan: r.plan, channel: channelPublicView(updated) });
+      const patch = { seo_plan: r.plan, seo_plan_updated_at: new Date().toISOString() };
+      if (ch.product_url) {
+        const blog = await fetchBlogArticles(ch.product_url, { log: m => console.log('[blog]', m) }).catch(() => ({ ok: false }));
+        if (blog.ok) { patch.blog_articles = blog.articles; patch.blog_articles_updated_at = new Date().toISOString(); }
+      }
+      const updated = await updateChannel(ch.id, patch);
+      return json(res, { ok: true, plan: r.plan, blog_articles_count: patch.blog_articles?.length ?? (Array.isArray(ch.blog_articles) ? ch.blog_articles.length : 0), channel: channelPublicView(updated) });
     }
     // Dérive la palette d'émotions depuis les chaînes modèles + les chansons de référence.
     if (req.method === 'POST' && path === '/api/settings/derive-emotions') {

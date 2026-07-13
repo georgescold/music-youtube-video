@@ -167,6 +167,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     const meta = await generateMetadata({
       tracklist, mood, utmUrl, avoidTitles, strategy, emotion,
       seoPlan: channel?.seo_plan || null, recentHashtags, internalLinks,
+      blogArticles: Array.isArray(channel?.blog_articles) ? channel.blog_articles : [],
       channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', titleOverride,
       model: channel?.claude_model || 'sonnet', token: channelCreds(channel).claudeToken, log
     });
