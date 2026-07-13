@@ -192,14 +192,17 @@
       <div id="ads-summary" style="font-size:11.5px;color:var(--color-mut);margin-top:8px;padding:8px 11px;background:var(--color-soft2);border-radius:8px"></div>
     </div>
     <div id="ad-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:12px 0 0 3px;display:none">
-      <p class="hint" style="margin:0 0 14px">Fréquence et moments d'affichage des pubs <b>ponctuelles</b> (pas les permanentes, toujours visibles). La <b>position</b>, le <b>mode</b> (ponctuelle/permanente) et les <b>variantes de contraste</b> de chaque pub se règlent dans l'onglet <a href="/" style="color:var(--color-ink);font-weight:600">Assets</a>.</p>
-      <div class="grid2">
-        <div class="field"><label>Fréquence des pubs (minutes)</label><input id="f-ad_freq" type="number" min="1" max="60"></div>
-        <div class="field"><label>Durée d'une apparition (secondes)</label><input id="f-ad_dur" type="number" min="2" max="60"></div>
-      </div>
-      <div style="display:flex;gap:22px;margin-top:6px;font-size:13px">
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_intro"> Afficher au début</label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_outro"> Afficher à la fin</label>
+      <div id="ad-no-periodic-msg" class="hint" style="margin:0 0 14px;display:none">✅ Tu n'as actuellement <b>que des pubs Permanentes</b> (visibles en continu, jamais interrompues) — aucun réglage de fréquence n'est nécessaire, les champs ci-dessous ne s'appliquent à aucune de tes pubs pour l'instant. Ils réapparaîtront utiles si tu ajoutes une pub en mode <b>Ponctuelle</b> dans <a href="/" style="color:var(--color-ink);font-weight:600">Assets</a>.</div>
+      <div id="ad-periodic-fields">
+        <p class="hint" style="margin:0 0 14px">Fréquence et moments d'affichage des pubs <b>ponctuelles</b> uniquement — n'affecte JAMAIS tes pubs <b>Permanentes</b>, qui restent visibles en continu quoi que tu règles ici. La <b>position</b>, le <b>mode</b> et les <b>variantes de contraste</b> de chaque pub se règlent dans l'onglet <a href="/" style="color:var(--color-ink);font-weight:600">Assets</a>.</p>
+        <div class="grid2">
+          <div class="field"><label>Fréquence des pubs ponctuelles (minutes)</label><input id="f-ad_freq" type="number" min="1" max="60"></div>
+          <div class="field"><label>Durée d'une apparition (secondes)</label><input id="f-ad_dur" type="number" min="2" max="60"></div>
+        </div>
+        <div style="display:flex;gap:22px;margin-top:6px;font-size:13px">
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_intro"> Afficher au début</label>
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="f-ad_outro"> Afficher à la fin</label>
+        </div>
       </div>
     </div>
   </div>
@@ -458,6 +461,11 @@ function renderAdsSummary(sum, enabled) {
   box.innerHTML = (enabled ? '✅ ' : '⏸️ ') + sum.active + ' pub(s) prête(s) : ' + (parts.join(' · ') || 'aucune active') +
     (paused ? ' · ' + paused + ' en pause' : '') +
     (enabled ? '' : ' <b>— mais l\'interrupteur ci-dessus est décoché, donc rien ne s\'affiche.</b>');
+  // Les champs fréquence/durée n'ont aucun effet sans pub ponctuelle active -> on les cache et on
+  // rassure au lieu de laisser des nombres qui n'affectent rien inquiéter pour rien.
+  const hasPeriodic = sum.periodic > 0;
+  $('ad-periodic-fields').style.display = hasPeriodic ? '' : 'none';
+  $('ad-no-periodic-msg').style.display = hasPeriodic ? 'none' : '';
 }
 function syncCron() { $('cron-opts').style.display = $('f-cron_enabled').checked ? '' : 'none'; }
 $('f-cron_enabled').addEventListener('change', syncCron);
