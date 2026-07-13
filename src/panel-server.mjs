@@ -727,16 +727,16 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/api/home') {
       const ch = await getActiveChannel();
       if (!ch) return json(res, { channel: null });
-      const vids = await dbSelect('videos', `?channel_id=eq.${ch.id}&order=created_at.desc&limit=200&select=id,title,status,created_at,youtube_url,error`).catch(() => []);
+      const vids = await dbSelect('videos', `?channel_id=eq.${ch.id}&order=created_at.desc&limit=200&select=id,title,status,created_at,published_at,youtube_url,error`).catch(() => []);
       const counts = { total: vids.length, published: 0, pending_review: 0, failed: 0 };
       for (const v of vids) if (v.status in counts) counts[v.status]++;
-      const byId = Object.fromEntries(vids.map(v => [v.id, v.title]));
-      const ids = vids.slice(0, 30).map(v => v.id);
-      let actions = [];
-      if (ids.length) {
-        const logs = await dbSelect('run_logs', `?video_id=in.(${ids.join(',')})&order=created_at.desc&limit=14&select=step,status,message,created_at,video_id`).catch(() => []);
-        actions = logs.map(l => ({ step: l.step, status: l.status, message: l.message, created_at: l.created_at, title: byId[l.video_id] || '(vidéo)' }));
-      }
+      // Dernières actions : UNE ligne par vidéo (l'essentiel, pas le détail de chaque étape technique).
+      const STATUS_LABEL = { published: 'Publiée', pending_review: 'À valider', failed: 'Échec', cancelled: 'Annulée', curating: 'En cours (curation)', downloading: 'En cours (téléchargement)', rendering: 'En cours (montage)', uploading: 'En cours (upload)' };
+      const actions = vids.slice(0, 5).map(v => ({
+        step: v.status, status: v.status === 'failed' ? 'fail' : 'ok',
+        message: v.status === 'failed' ? (v.error || '') : '',
+        created_at: v.published_at || v.created_at, title: v.title || '(vidéo)', label: STATUS_LABEL[v.status] || v.status
+      }));
       const today = await generatedToday(ch.id).catch(() => 0);
       // Stats agrégées de la chaîne : dernier snapshot par vidéo (video_stats) -> total vues/likes + rétention moyenne.
       let stats = { views: 0, likes: 0, retention: null, videos: 0 };
@@ -994,6 +994,11 @@ const server = http.createServer(async (req, res) => {
       if (b.daily_report_hour != null) patch.daily_report_hour = Math.max(0, Math.min(23, Number(b.daily_report_hour) || 8));
       if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
+      // À l'activation de la génération auto (transition off -> on), active aussi la MàJ quotidienne des stats
+      // par défaut si elle ne l'est pas déjà (sauf demande explicite contraire dans la même sauvegarde).
+      if (patch.cron_enabled === true && !ch.cron_enabled && ch.stats_daily !== true && typeof b.stats_daily !== 'boolean') {
+        patch.stats_daily = true;
+      }
       if (typeof b.coach_enabled === 'boolean') patch.coach_enabled = b.coach_enabled;
       if (typeof b.stats_daily === 'boolean') patch.stats_daily = b.stats_daily;
       if (['sonnet', 'opus', 'haiku'].includes(b.claude_model)) patch.claude_model = b.claude_model;
