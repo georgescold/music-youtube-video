@@ -97,6 +97,9 @@
   .dash-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--color-ink); cursor: pointer; }
   .dash-toggle input { width: 15px; height: 15px; cursor: pointer; }
   .dash-updated { font-size: 11.5px; color: var(--color-mut2); }
+  .dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .dash-cols .dash-acts { margin-top: 16px; }
+  @media (max-width: 640px) { .dash-cols { grid-template-columns: 1fr; gap: 0; } }
   .vdetail { margin-bottom: 14px; }
   .vd-load { font-size: 12px; color: var(--color-mut2); }
   .vd-block { margin-bottom: 14px; }
@@ -536,13 +539,17 @@ async function loadHome() {
     const live = c.cron_enabled
       ? '<span class="live on"><span class="dot"></span>Live — génération auto</span>'
       : '<a class="live off" href="/settings" title="Configurer la publication automatique"><span class="dot"></span>Auto désactivée ⚙</a>';
-    const win = (c.publish_time_start && c.publish_time_end) ? ' · fenêtre ' + c.publish_time_start + '–' + c.publish_time_end : '';
     const mode = c.publish_mode === 'auto' ? 'publication auto (public)' : 'brouillons à valider';
+    const sched = c.schedule_mode === 'fixed' ? 'heures précises' : 'mode auto (warm-up)';
+    const up = d.upcoming || { actions: [], next_label: null };
     const sub = c.cron_enabled
-      ? (c.max_posts_per_day + '/j max' + win + ' · ' + mode + ' · ' + d.today + " générée(s) aujourd'hui")
+      ? (sched + ' · ' + c.max_posts_per_day + '/j max · ' + mode + ' · ' + d.today + " générée(s) aujourd'hui"
+         + (up.next_label ? ' · <b style="color:var(--color-ink)">⏭ prochaine : ' + esc(up.next_label) + '</b>' : ''))
       : ('Clique « Auto désactivée » pour configurer la publication automatique · ' + mode);
     const cnt = (n, lbl) => '<div class="dash-count"><b>' + n + '</b><span>' + lbl + '</span></div>';
     const acts = (d.actions || []).map(a => '<div class="act"><span class="ai">' + dashActIcon(a) + '</span><span>' + esc(dashActLabel(a)) + '</span><span class="an">' + esc(a.title) + '</span><span class="at">' + dashWhen(a.created_at) + '</span></div>').join('');
+    const nextActs = (up.actions || []).map(a => '<div class="act"><span class="ai">⏭️</span><span>' + esc(a.label) + '</span><span class="at">' + esc(a.detail) + '</span></div>').join('');
+    const emptyNext = c.cron_enabled ? 'Aucune action planifiée.' : 'Génération automatique désactivée.';
     // Stats agrégées de la chaîne + bouton MàJ + toggle quotidien.
     const s = d.stats || {};
     const upd = c.stats_updated_at ? 'stats ' + dashWhen(c.stats_updated_at) : 'stats jamais mises à jour';
@@ -560,7 +567,10 @@ async function loadHome() {
       '<div class="dash-sub">' + sub + '</div>' +
       '<div class="dash-counts">' + cnt(d.counts.published, 'publiées') + cnt(d.counts.pending_review, 'à valider') + cnt(d.counts.failed, 'échecs') + cnt(d.counts.total, 'au total') + '</div>' +
       statsBlock +
-      '<div class="dash-acts"><h3>Dernières actions</h3>' + (acts || '<div class="act" style="color:var(--color-mut2)">Aucune action récente.</div>') + '</div>';
+      '<div class="dash-cols">' +
+        '<div class="dash-acts"><h3>Dernières actions</h3>' + (acts || '<div class="act" style="color:var(--color-mut2)">Aucune action récente.</div>') + '</div>' +
+        '<div class="dash-acts"><h3>Prochaines actions</h3>' + (nextActs || '<div class="act" style="color:var(--color-mut2)">' + emptyNext + '</div>') + '</div>' +
+      '</div>';
     // Handlers : MàJ manuelle des stats + toggle quotidien.
     const rBtn = document.getElementById('stats-refresh');
     if (rBtn) rBtn.onclick = async () => {

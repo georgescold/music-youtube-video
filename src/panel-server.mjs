@@ -90,6 +90,34 @@ function slotTargetMin(slot, index, dayKey) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return lo + (h % (span + 1));
 }
+// Prochaines actions planifiées de la chaîne (pour le dashboard). Selon le mode (fixe = créneaux, auto = fenêtre+warm-up).
+async function buildUpcoming(ch, now = new Date()) {
+  if (!ch || !ch.cron_enabled) return { actions: [], next_label: null };
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const todayKey = now.toISOString().slice(0, 10);
+  const tomorrowKey = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
+  const fmt = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  const verb = ch.publish_mode === 'auto' ? 'Génération + publication (public)' : 'Génération (brouillon à valider)';
+  const acts = [];
+  const modeFixed = ch.publish_schedule_mode === 'fixed' || (!ch.publish_schedule_mode && Array.isArray(ch.publish_times) && ch.publish_times.length > 0);
+  if (modeFixed) {
+    const slots = (ch.publish_times || []).filter(t => /^\d{2}:\d{2}(-\d{2}:\d{2})?$/.test(t));
+    const targets = slots.map((t, i) => slotTargetMin(t, i, todayKey)).filter(x => x != null).sort((a, b) => a - b);
+    for (const m of targets.filter(m => m > nowMin)) acts.push({ label: verb, detail: "aujourd'hui " + fmt(m), when: todayKey + 'T' + fmt(m) });
+    const tTargets = slots.map((t, i) => slotTargetMin(t, i, tomorrowKey)).filter(x => x != null).sort((a, b) => a - b);
+    if (tTargets.length) acts.push({ label: verb, detail: 'demain ' + fmt(tTargets[0]), when: tomorrowKey + 'T' + fmt(tTargets[0]) });
+  } else {
+    const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
+    const end = ch.publish_time_end || start;
+    const { published, ageDays } = await channelMaturity(ch.id).catch(() => ({ published: 0, ageDays: 0 }));
+    const cadence = computeCadence({ publishedCount: published, ageDays, maxPerDay: ch.max_posts_per_day || 1 });
+    const done = await generatedToday(ch.id).catch(() => 0);
+    const remaining = Math.max(0, cadence - done);
+    if (remaining > 0 && nowMin <= toMinOfDay(end)) acts.push({ label: verb, detail: "aujourd'hui dans la fenêtre " + start + '–' + end + ' (reste ' + remaining + ')', when: null });
+    else acts.push({ label: verb, detail: 'demain dans la fenêtre ' + start + '–' + end + " (jusqu'à " + cadence + ')', when: tomorrowKey });
+  }
+  return { actions: acts.slice(0, 6), next_label: acts[0]?.detail || null };
+}
 function windowDates(start, end, now) {
   let a = toMinOfDay(start), b = toMinOfDay(end); if (b < a) b += 1440;
   const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
@@ -716,9 +744,11 @@ const server = http.createServer(async (req, res) => {
         for (const s of latest.values()) { stats.views += s.views || 0; stats.likes += s.likes || 0; if (s.avg_view_pct != null) { rSum += s.avg_view_pct; rN++; } }
         stats.videos = latest.size; stats.retention = rN ? Math.round(rSum / rN) : null;
       } catch (e) {}
+      const upcoming = await buildUpcoming(ch, new Date()).catch(() => ({ actions: [], next_label: null }));
+      const scheduleMode = ch.publish_schedule_mode || ((Array.isArray(ch.publish_times) && ch.publish_times.length) ? 'fixed' : 'auto');
       return json(res, {
-        channel: { name: ch.name, cron_enabled: !!ch.cron_enabled, publish_mode: ch.publish_mode || 'review', max_posts_per_day: ch.max_posts_per_day || 1, publish_time_start: ch.publish_time_start || null, publish_time_end: ch.publish_time_end || null, stats_daily: ch.stats_daily === true, stats_updated_at: ch.stats_updated_at || null },
-        counts, today, recent: vids.slice(0, 6), actions, stats
+        channel: { name: ch.name, cron_enabled: !!ch.cron_enabled, publish_mode: ch.publish_mode || 'review', schedule_mode: scheduleMode, max_posts_per_day: ch.max_posts_per_day || 1, publish_time_start: ch.publish_time_start || null, publish_time_end: ch.publish_time_end || null, stats_daily: ch.stats_daily === true, stats_updated_at: ch.stats_updated_at || null },
+        counts, today, recent: vids.slice(0, 6), actions, upcoming, stats
       });
     }
     if (req.method === 'GET' && path === '/api/videos/status') {
