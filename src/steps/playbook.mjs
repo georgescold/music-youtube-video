@@ -3,7 +3,7 @@
 import { collectReferenceVideos } from '../services/youtubeData.mjs';
 import { askClaude, extractJson } from '../services/claude.mjs';
 
-export async function analyzeInspiration(urls = [], { token, perChannel = 15, log = () => {} } = {}) {
+export async function analyzeInspiration(urls = [], { token, perChannel = 15, model = 'sonnet', log = () => {} } = {}) {
   // Accepte des URLs de VIDÉOS et/ou de CHAÎNES.
   const videos = await collectReferenceVideos(urls, perChannel, log);
   if (!videos.length) return { ok: false, error: 'aucune vidéo/chaîne de référence exploitable', playbook: null };
@@ -32,7 +32,7 @@ export async function analyzeInspiration(urls = [], { token, perChannel = 15, lo
   ].join('\n');
 
   log('décodage des patterns de titres via Claude…');
-  const pb = extractJson(await askClaude(system, user, 'sonnet', { token }));
+  const pb = extractJson(await askClaude(system, user, model, { token }));
   const playbook = {
     title_patterns: arr(pb.title_patterns), title_style: arr(pb.title_style), winning_examples: arr(pb.winning_examples),
     emotional_hooks: arr(pb.emotional_hooks), do: arr(pb.do), dont: arr(pb.dont),

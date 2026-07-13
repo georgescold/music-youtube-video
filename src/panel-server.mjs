@@ -910,6 +910,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       if (typeof b.coach_enabled === 'boolean') patch.coach_enabled = b.coach_enabled;
       if (typeof b.stats_daily === 'boolean') patch.stats_daily = b.stats_daily;
+      if (['sonnet', 'opus', 'haiku'].includes(b.claude_model)) patch.claude_model = b.claude_model;
       if (b.max_posts_per_day != null) patch.max_posts_per_day = Math.max(1, Math.min(10, Number(b.max_posts_per_day) || 1));
       if (typeof b.emotion_from_image === 'boolean') patch.emotion_from_image = b.emotion_from_image;
       if (typeof b.thumbnail_enabled === 'boolean') patch.thumbnail_enabled = b.thumbnail_enabled;
@@ -960,7 +961,7 @@ const server = http.createServer(async (req, res) => {
       const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
       if (!urls.length) return json(res, { ok: false, error: 'ajoute au moins une chaîne d\'inspiration puis enregistre avant d\'analyser' });
       const token = channelCreds(ch).claudeToken;
-      const r = await analyzeInspiration(urls, { token, log: m => console.log('[playbook]', m) });
+      const r = await analyzeInspiration(urls, { token, model: ch.claude_model || 'sonnet', log: m => console.log('[playbook]', m) });
       if (!r.ok) return json(res, { ok: false, error: r.error });
       const updated = await updateChannel(ch.id, { playbook: r.playbook, playbook_updated_at: new Date().toISOString() });
       return json(res, { ok: true, playbook: r.playbook, errors: r.errors || [], channel: channelPublicView(updated) });
@@ -978,7 +979,7 @@ const server = http.createServer(async (req, res) => {
       const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
       const refs = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title`).catch(() => []);
       const token = channelCreds(ch).claudeToken;
-      const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', inspirationUrls: urls, references: refs, token, log: m => console.log('[seo]', m) });
+      const r = await generateSeoPlan({ objective: ch.objective || '', productDesc: ch.product_desc || '', inspirationUrls: urls, references: refs, token, model: ch.claude_model || 'sonnet', log: m => console.log('[seo]', m) });
       if (!r.ok) return json(res, { ok: false, error: r.error });
       const updated = await updateChannel(ch.id, { seo_plan: r.plan, seo_plan_updated_at: new Date().toISOString() });
       return json(res, { ok: true, plan: r.plan, channel: channelPublicView(updated) });
@@ -990,7 +991,7 @@ const server = http.createServer(async (req, res) => {
       const urls = Array.isArray(ch.inspiration_urls) ? ch.inspiration_urls : [];
       const refs = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title,artist,mood_tags`).catch(() => []);
       const token = channelCreds(ch).claudeToken;
-      const r = await deriveEmotions({ inspirationUrls: urls, references: refs, token, log: m => console.log('[emotions]', m) });
+      const r = await deriveEmotions({ inspirationUrls: urls, references: refs, token, model: ch.claude_model || 'sonnet', log: m => console.log('[emotions]', m) });
       if (!r.ok) return json(res, { ok: false, error: r.error });
       const updated = await updateChannel(ch.id, { emotion_palette: r.emotions, emotion_cursor: 0, emotion_palette_updated_at: new Date().toISOString() });
       return json(res, { ok: true, emotions: r.emotions, channel: channelPublicView(updated) });

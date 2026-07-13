@@ -37,7 +37,7 @@ function pickHashtags(plan, recentHashtags = [], count = 5) {
   return picked;
 }
 
-export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, seoPlan = null, recentHashtags = [], internalLinks = [], channelHandle = '', channelName = '', titleOverride = '', log = () => {} }) {
+export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl, avoidTitles = [], strategy = {}, emotion = null, seoPlan = null, recentHashtags = [], internalLinks = [], channelHandle = '', channelName = '', titleOverride = '', model = 'sonnet', token, log = () => {} }) {
   const pb = strategy.playbook || {};
   const plan = seoPlan || {};
   // Contexte SEO adaptatif : le domaine/ton vient de la chaîne (objectif + produit), pas d'un thème présupposé.
@@ -122,29 +122,29 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
   const forcedTitle = String(titleOverride || '').trim();
   if (forcedTitle) {
     // Titre imposé : on le respecte TEL QUEL, on ne génère que le reste (hook/keywords/hashtags/tags).
-    meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
+    meta = extractJson(await askClaude(system, buildUser(), model, { token }));
     meta.title = forcedTitle;
     log('titre imposé : ' + meta.title);
   } else {
     // Passe 1 — candidats.
     log('génération de titres candidats…');
     let cj = {};
-    try { cj = extractJson(await askClaude(system, candidatesUser(), 'sonnet')); } catch (e) { cj = {}; }
+    try { cj = extractJson(await askClaude(system, candidatesUser(), model, { token })); } catch (e) { cj = {}; }
     let candidates = (Array.isArray(cj.candidates) ? cj.candidates : []).map(s => String(s || '').trim()).filter(Boolean);
     candidates = candidates.filter(t => !avoidSet.has(normTitle(t))).slice(0, 8);
     if (candidates.length >= 2) {
       // Passe 2 — sélection + affinage du meilleur + reste.
       log(`sélection du meilleur titre parmi ${candidates.length} candidats…`);
-      meta = extractJson(await askClaude(system, judgeUser(candidates), 'sonnet'));
+      meta = extractJson(await askClaude(system, judgeUser(candidates), model, { token }));
       for (let attempt = 0; attempt < 2 && avoidSet.has(normTitle(meta.title)); attempt++) {
-        meta = extractJson(await askClaude(system, judgeUser(candidates, [meta.title]), 'sonnet'));
+        meta = extractJson(await askClaude(system, judgeUser(candidates, [meta.title]), model, { token }));
       }
       log('titre retenu : ' + meta.title);
     } else {
       // Repli (candidats indisponibles) : passe unique + anti-doublon.
-      meta = extractJson(await askClaude(system, buildUser(), 'sonnet'));
+      meta = extractJson(await askClaude(system, buildUser(), model, { token }));
       const extraAvoid = [];
-      for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) { extraAvoid.push(meta.title); meta = extractJson(await askClaude(system, buildUser(extraAvoid), 'sonnet')); }
+      for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) { extraAvoid.push(meta.title); meta = extractJson(await askClaude(system, buildUser(extraAvoid), model, { token })); }
     }
   }
 

@@ -90,7 +90,7 @@ export async function analyzeAndDecide({ channel, creds, token, now = new Date()
         'Donne : "insights" (3-4 phrases sur ce qui marche/ne marche pas), "recommendations" (4 décisions concrètes et actionnables).',
         'Format EXACT : {"insights":"...","recommendations":["..."]}'
       ].join('\n');
-      const j = extractJson(await askClaude(system, user, 'sonnet', { token }));
+      const j = extractJson(await askClaude(system, user, channel?.claude_model || 'sonnet', { token }));
       insights = String(j.insights || '').trim();
       recommendations = Array.isArray(j.recommendations) ? j.recommendations.filter(x => typeof x === 'string').map(x => x.trim()) : [];
     } catch (e) { log('coach Claude KO : ' + e.message); }

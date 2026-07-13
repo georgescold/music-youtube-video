@@ -106,7 +106,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     if (primaryImagePath && channel?.emotion_from_image !== false) {
       try {
         await logStep('vision', 'start', 'analyse de l\'image de fond');
-        const va = await analyzeImage(primaryImagePath, { token: channelCreds(channel).claudeToken });
+        const va = await analyzeImage(primaryImagePath, { token: channelCreds(channel).claudeToken, model: channel?.claude_model || 'sonnet' });
         if (va?.emotion) {
           emotion = {
             name: String(va.emotion).trim(),
@@ -134,7 +134,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     const epidemicClient = createEpidemicClient({ jwt: channelCreds(channel).epidemicJwt, cookies: channelCreds(channel).epidemicCookies });
     const curation = await curatePlaylist({
       references: references.map(r => ({ spotify_url: r.spotify_url, title: r.title, mood_tags: r.mood_tags })),
-      targetSec: target, moodHint: mood, emotion, client: epidemicClient, controller, log
+      targetSec: target, moodHint: mood, emotion, client: epidemicClient, model: channel?.claude_model || 'sonnet', controller, log
     });
     const { tracks, totalSec } = curation;
     if (!tracks.length) throw new Error('curation vide (aucune chanson de référence exploitable)');
@@ -167,7 +167,8 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     const meta = await generateMetadata({
       tracklist, mood, utmUrl, avoidTitles, strategy, emotion,
       seoPlan: channel?.seo_plan || null, recentHashtags, internalLinks,
-      channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', titleOverride, log
+      channelHandle: channel?.yt_handle || '', channelName: channel?.name || '', titleOverride,
+      model: channel?.claude_model || 'sonnet', token: channelCreds(channel).claudeToken, log
     });
     await logStep('metadata', 'ok', meta.title);
     ck();

@@ -4,7 +4,7 @@
 import { collectReferenceVideos } from '../services/youtubeData.mjs';
 import { askClaude, extractJson } from '../services/claude.mjs';
 
-export async function deriveEmotions({ inspirationUrls = [], references = [], token, log = () => {} } = {}) {
+export async function deriveEmotions({ inspirationUrls = [], references = [], token, model = 'sonnet', log = () => {} } = {}) {
   // 1) Titres des vidéos de référence (URLs de vidéos et/ou de chaînes).
   const vids = await collectReferenceVideos(inspirationUrls, 15, log);
   const videoBlock = vids.length ? 'Titres des vidéos de référence :\n' + vids.map(v => '- ' + v.title).join('\n') : '';
@@ -34,7 +34,7 @@ export async function deriveEmotions({ inspirationUrls = [], references = [], to
   ].join('\n');
 
   log('dérivation de la palette d\'émotions via Claude…');
-  const j = extractJson(await askClaude(system, user, 'sonnet', { token }));
+  const j = extractJson(await askClaude(system, user, model, { token }));
   const emotions = (Array.isArray(j.emotions) ? j.emotions : [])
     .map(e => ({
       name: String(e.name || '').trim(),

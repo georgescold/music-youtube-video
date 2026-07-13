@@ -6,7 +6,7 @@
 import { collectReferenceVideos } from '../services/youtubeData.mjs';
 import { askClaude, extractJson } from '../services/claude.mjs';
 
-export async function generateSeoPlan({ objective = '', productDesc = '', inspirationUrls = [], references = [], token, log = () => {} } = {}) {
+export async function generateSeoPlan({ objective = '', productDesc = '', inspirationUrls = [], references = [], token, model = 'sonnet', log = () => {} } = {}) {
   // Vidéos de référence (URLs de vidéos et/ou de chaînes), triées par vues.
   const vids = await collectReferenceVideos(inspirationUrls, 15, log);
   const top = [...vids].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 30);
@@ -44,7 +44,7 @@ export async function generateSeoPlan({ objective = '', productDesc = '', inspir
   ].filter(Boolean).join('\n');
 
   log('conception du plan SEO via Claude…');
-  const j = extractJson(await askClaude(system, user, 'sonnet', { token }));
+  const j = extractJson(await askClaude(system, user, model, { token }));
   const arr = x => Array.isArray(x) ? x.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim().replace(/^#/, '')) : [];
   const plan = {
     niche_summary: String(j.niche_summary || '').trim(),

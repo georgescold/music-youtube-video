@@ -34,7 +34,7 @@ async function similarTo(call, id, first = 8) {
 }
 
 // Claude analyse le style COMMUN des références et décide de l'approche (adaptatif, pas de style imposé).
-async function analyzeReferences(references, moodHint) {
+async function analyzeReferences(references, moodHint, model = 'sonnet') {
   const refDesc = references.map(r => `- ${r.title || r.spotify_url}${(r.mood_tags || []).length ? ' [moods: ' + r.mood_tags.join(', ') + ']' : ''}`).join('\n') || '(aucune référence précise)';
   const system = "Tu es directeur musical. Tu analyses des chansons de référence pour bâtir une playlist qui leur ressemble. Tu réponds UNIQUEMENT en JSON valide.";
   const user = [
@@ -50,7 +50,7 @@ async function analyzeReferences(references, moodHint) {
     'Format EXACT : {"understanding":"...","vocals":"instrumental|vocal|mixed","angles":["...", ...]}'
   ].join('\n');
   try {
-    const j = extractJson(await askClaude(system, user, 'sonnet'));
+    const j = extractJson(await askClaude(system, user, model));
     return {
       understanding: typeof j.understanding === 'string' ? j.understanding.trim() : '',
       vocals: ['instrumental', 'vocal', 'mixed'].includes(j.vocals) ? j.vocals : 'mixed',
@@ -68,12 +68,12 @@ function shuffle(arr) {
 }
 
 // vocalsOverride: 'instrumental' | 'vocal' | 'mixed' | undefined (undefined = Claude décide, adaptatif)
-export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, emotion, client, controller, log = () => {} }) {
+export async function curatePlaylist({ references = [], targetSec = 5400, vocalsOverride, moodHint, emotion, client, model = 'sonnet', controller, log = () => {} }) {
   const ck = () => { if (controller?.cancelled) throw new Error('cancelled'); };
   const call = client?.callTool || defaultCallTool; // client Epidemic de la chaîne (jeton stocké dans l'app), sinon défaut (env)
   // Si une émotion pilote la vidéo, elle devient le contexte prioritaire de la curation.
   const hint = emotion ? `${emotion.name} — ${emotion.description}` : moodHint;
-  const analysis = await analyzeReferences(references, hint);
+  const analysis = await analyzeReferences(references, hint, model);
   const vocalsMode = vocalsOverride || analysis.vocals;
   if (emotion) log('émotion : ' + emotion.name);
   if (analysis.understanding) log('compris : ' + analysis.understanding);

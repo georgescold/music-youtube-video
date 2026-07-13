@@ -160,6 +160,14 @@
   <div class="card">
     <div class="card-head"><span class="card-title">Génération titres/description/curation</span><button class="btn btn-sec" data-test="claude">Tester</button></div>
     <div class="field"><label>Token OAuth (sk-ant-oat01-…)</label><input id="f-claude_token" type="password" autocomplete="off"><div class="hint" id="h-claude_token"></div></div>
+    <div class="field" style="max-width:360px"><label>Modèle utilisé (titres, description, curation, analyses)</label>
+      <select id="f-claude_model" style="width:100%">
+        <option value="sonnet">Sonnet 5 — équilibré, recommandé (défaut)</option>
+        <option value="opus">Opus 4.8 — le plus créatif/puissant (plus lent/coûteux)</option>
+        <option value="haiku">Haiku 4.5 — le plus rapide/économe</option>
+      </select>
+      <div class="hint">Propre à cette chaîne. S'applique à toute la génération de texte (titres, description, curation, playbook, SEO, émotions, coach).</div>
+    </div>
     <div class="result" id="r-claude"></div>
   </div>
 
@@ -335,6 +343,7 @@ async function loadSettings() {
   secretHint('yt_refresh_token', s.youtube.hasRefresh);
   secretHint('epidemic_jwt', s.epidemic.configured, s.epidemic.mask);
   secretHint('claude_token', s.claude.configured, s.claude.mask);
+  $('f-claude_model').value = s.claude_model || 'sonnet';
   $('f-publish_time_start').value = (s.settings.publish_time_start || '18:00').slice(0, 5);
   $('f-publish_time_end').value = (s.settings.publish_time_end || s.settings.publish_time_start || '18:00').slice(0, 5);
   buildTimes(s.settings.publish_times || []);
@@ -438,7 +447,7 @@ $('save').onclick = async () => {
   const body = {
     name: $('f-name').value, yt_client_id: $('f-yt_client_id').value, yt_channel_id: $('f-yt_channel_id').value,
     yt_client_secret: $('f-yt_client_secret').value, yt_refresh_token: $('f-yt_refresh_token').value,
-    epidemic_jwt: $('f-epidemic_jwt').value, claude_token: $('f-claude_token').value,
+    epidemic_jwt: $('f-epidemic_jwt').value, claude_token: $('f-claude_token').value, claude_model: $('f-claude_model').value,
     publish_time_start: $('f-publish_time_start').value, publish_time_end: $('f-publish_time_end').value,
     publish_times: collectTimes(),
     target_min_min: Number($('f-target_min').value), target_max_min: Number($('f-target_max').value), utm_base: $('f-utm_base').value,
