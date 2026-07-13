@@ -103,7 +103,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
 
     // Émotion : dérivée de l'IMAGE de fond (combo parfait image ↔ titre ↔ musique), sinon palette dérivée.
     let emotion = null;
-    if (primaryImagePath && channel?.emotion_from_image !== false) {
+    if (primaryImagePath && channel?.emotion_from_image === true) {
       try {
         await logStep('vision', 'start', 'analyse de l\'image de fond');
         const va = await analyzeImage(primaryImagePath, { token: channelCreds(channel).claudeToken, model: channel?.claude_model || 'sonnet' });

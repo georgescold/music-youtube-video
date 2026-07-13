@@ -208,7 +208,13 @@ async function autoGenerateSeoPlan(ch) {
       const blog = await fetchBlogArticles(ch.product_url, { log: m => console.log('[blog:auto]', m) }).catch(() => ({ ok: false }));
       if (blog.ok) { patch.blog_articles = blog.articles; patch.blog_articles_updated_at = new Date().toISOString(); }
     }
-    if (Object.keys(patch).length) { await updateChannel(ch.id, patch); console.log('[seo:auto] MàJ pour', ch.name, '— plan:', r.ok, 'articles:', patch.blog_articles?.length ?? '—'); }
+    // Palette d'émotions : nécessaire au coach (source d'émotion par défaut). Dérivée si absente.
+    if (!(Array.isArray(ch.emotion_palette) && ch.emotion_palette.length)) {
+      const refsE = await dbSelect('reference_songs', `?active=eq.true&channel_id=eq.${ch.id}&select=title,artist,mood_tags`).catch(() => []);
+      const em = await deriveEmotions({ inspirationUrls: urls, references: refsE, token, model: ch.claude_model || 'sonnet', log: m => console.log('[emotions:auto]', m) }).catch(() => ({ ok: false }));
+      if (em.ok && em.emotions.length) { patch.emotion_palette = em.emotions; patch.emotion_cursor = 0; patch.emotion_palette_updated_at = new Date().toISOString(); }
+    }
+    if (Object.keys(patch).length) { await updateChannel(ch.id, patch); console.log('[seo:auto] MàJ pour', ch.name, '— plan:', r.ok, 'articles:', patch.blog_articles?.length ?? '—', 'émotions:', patch.emotion_palette?.length ?? '—'); }
   } catch (e) { console.error('[seo:auto] KO', e.message); }
 }
 

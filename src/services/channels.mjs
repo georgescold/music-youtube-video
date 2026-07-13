@@ -100,7 +100,7 @@ export function channelPublicView(ch) {
       palette: Array.isArray(ch.emotion_palette) ? ch.emotion_palette : [],
       cursor: ch.emotion_cursor || 0,
       updated_at: ch.emotion_palette_updated_at || null,
-      from_image: ch.emotion_from_image !== false
+      from_image: ch.emotion_from_image === true
     },
     seo_plan: ch.seo_plan || null,
     seo_plan_updated_at: ch.seo_plan_updated_at || null,
