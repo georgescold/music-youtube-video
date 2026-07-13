@@ -591,6 +591,13 @@ const server = http.createServer(async (req, res) => {
       try { const [row] = await dbPatch('assets', `id=eq.${b.id}`, { active: !!b.active }); return json(res, { ok: true, asset: row }); }
       catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
+    // Mode d'affichage d'une pub : 'periodic' (fenêtres intro/fréquence/outro) ou 'constant' (overlay permanent).
+    if (req.method === 'POST' && path === '/api/assets/mode') {
+      const b = await readJsonBody(req);
+      if (!b.id || !['periodic', 'constant'].includes(b.ad_mode)) return json(res, { ok: false, error: 'id et ad_mode (periodic|constant) requis' });
+      try { const [row] = await dbPatch('assets', `id=eq.${b.id}`, { ad_mode: b.ad_mode }); return json(res, { ok: true, asset: row }); }
+      catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+    }
 
     // ── Chansons de référence ──
     if (req.method === 'GET' && path === '/api/references') {

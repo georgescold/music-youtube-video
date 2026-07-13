@@ -1,6 +1,7 @@
 // Montage FFmpeg. Deux notions distinctes :
 //  - FONDS (backgrounds) : image(s) ou vidéo. Plusieurs images -> réparties équitablement (slideshow équilibré).
-//  - PUBS (ads) : image/animation/vidéo superposées à des moments précis (intro, outro + fréquence réglable).
+//  - PUBS PONCTUELLES (ads) : image/animation/vidéo superposées à des moments précis (intro, outro + fréquence réglable).
+//  - PUBS PERMANENTES (constantAds) : superposées en continu, sans coupure, du début à la fin de la vidéo.
 import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -129,7 +130,7 @@ export function adIntervals(durationSec, freqMin, durSec, { intro = true, outro 
 }
 
 // backgrounds: [{ path, isVideo }] · ads: [{ path, isVideo }]
-export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, adIntro = true, adOutro = true, placement, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, titleText = '', videoText = false, textFont = 'playfair', controller, log = () => {} }) {
+export async function renderVideo({ backgrounds = [], ads = [], constantAds = [], audioPath, outPath, adFrequencyMin = 10, adDurationSec = 8, adIntro = true, adOutro = true, placement, width = 1920, height = 1080, fps = Number(process.env.RENDER_FPS) || 4, titleText = '', videoText = false, textFont = 'playfair', controller, log = () => {} }) {
   const D = Math.max(1, Math.round(probeDuration(audioPath)));
   const inputs = [];
   let idx = 0;
@@ -183,11 +184,25 @@ export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPa
     log(`titre incrusté sur la vidéo (${lines.length} ligne(s), police ${textFont})`);
   }
 
-  // ── Pubs : chaque pub a SA position (ad.placement), fenêtres réparties, assets en rotation ──
+  let vLabel = bgLabel;
+
+  // ── Pubs PERMANENTES : overlay SANS fenêtre (visible du début à la fin de la vidéo), à SA position. ──
+  constantAds.forEach((ad, ci) => {
+    const p = ad.placement || placement || {};
+    const boxW = Math.max(16, Math.round(width * (p.w ?? 0.28)));
+    const boxH = Math.max(16, Math.round(height * (p.h ?? 0.40)));
+    const ox = Math.min(width - 1, Math.max(0, Math.round(width * (p.x ?? 0.68))));
+    const oy = Math.min(height - 1, Math.max(0, Math.round(height * (p.y ?? 0.55))));
+    const inIdx = ad.isVideo ? addInput(['-stream_loop', '-1', '-i', ad.path]) : addInput(['-loop', '1', '-i', ad.path]);
+    filters.push(`[${inIdx}:v]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1[adc${ci}]`);
+    filters.push(`[${vLabel}][adc${ci}]overlay=${ox}:${oy}:shortest=1[vc${ci}]`); // pas de enable= -> permanent
+    vLabel = `vc${ci}`;
+  });
+
+  // ── Pubs PONCTUELLES : chaque pub a SA position (ad.placement), fenêtres réparties, assets en rotation ──
   // RÈGLE HARDCODÉE : jamais 2 pubs au même instant. Garanti par construction — les fenêtres
   // sont strictement disjointes (adIntervals) et chaque fenêtre est attribuée à UNE seule pub.
   const windows = adIntervals(D, adFrequencyMin, adDurationSec, { intro: adIntro, outro: adOutro });
-  let vLabel = bgLabel;
   if (ads.length && windows.length) {
     const perAd = ads.map(() => []);
     windows.forEach((w, k) => perAd[k % ads.length].push(w)); // fenêtre k -> pub (k mod n) : une seule pub par fenêtre
@@ -212,7 +227,7 @@ export async function renderVideo({ backgrounds = [], ads = [], audioPath, outPa
     '-map', `[${vLabel}]`, '-map', `${audioIdx}:a`,
     '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', outPath];
-  log(`montage FFmpeg — fonds:${backgrounds.length} · pubs:${ads.length} · apparitions:${windows.length} · durée ${Math.round(D / 60)} min`);
+  log(`montage FFmpeg — fonds:${backgrounds.length} · pubs permanentes:${constantAds.length} · pubs ponctuelles:${ads.length} · apparitions:${windows.length} · durée ${Math.round(D / 60)} min`);
   await runFF(args, { controller, label: 'montage' });
   return { outPath, windows };
 }

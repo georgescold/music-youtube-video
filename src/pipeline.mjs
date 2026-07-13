@@ -179,12 +179,25 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     await setStatus('rendering');
     await logStep('render', 'start');
     // Pubs : uniquement si activées pour la chaîne (opt-in), sinon aucune même s'il y a des assets pub.
-    const ads = [];
-    if (channel?.ads_enabled) for (const a of adAssets) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
+    // Deux modes par asset : 'constant' (overlay permanent, toujours inclus tel quel) et 'periodic' (fenêtres
+    // intro/fréquence/outro). Les pubs ponctuelles sont FAIT TOURNER d'une vidéo à l'autre (curseur de chaîne) :
+    // l'ordre — et donc le sous-ensemble réellement affiché s'il y en a plus que de fenêtres — change à chaque vidéo.
+    const ads = [], constantAds = [];
+    let usedAdIds = [];
+    if (channel?.ads_enabled) {
+      const constantAssets = adAssets.filter(a => a.ad_mode === 'constant');
+      const periodicAssets = adAssets.filter(a => a.ad_mode !== 'constant');
+      const cursor = channel.ad_cursor || 0;
+      const rotated = periodicAssets.length ? periodicAssets.map((_, i) => periodicAssets[(i + cursor) % periodicAssets.length]) : [];
+      for (const a of constantAssets) constantAds.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
+      for (const a of rotated) ads.push({ ...(await fetchAssetFile(a, workDir)), placement: a.placement });
+      usedAdIds = [...constantAssets, ...periodicAssets].map(a => a.id);
+      if (periodicAssets.length) await updateChannel(channel.id, { ad_cursor: (cursor + 1) % periodicAssets.length }).catch(() => {});
+    }
     const outPath = join(workDir, 'video.mp4');
     ck();
     await renderVideo({
-      backgrounds, ads, audioPath, outPath, log, controller,
+      backgrounds, ads, constantAds, audioPath, outPath, log, controller,
       adFrequencyMin: channel?.ad_frequency_min ?? 10,
       adDurationSec: channel?.ad_duration_sec ?? 8,
       adIntro: channel?.ad_intro !== false,
@@ -194,7 +207,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     });
     ck();
     const durSec = Math.round(probeDuration(outPath));
-    await logStep('render', 'ok', `${Math.round(durSec / 60)} min · fonds:${backgrounds.length} · pubs:${ads.length}`);
+    await logStep('render', 'ok', `${Math.round(durSec / 60)} min · fonds:${backgrounds.length} · pubs permanentes:${constantAds.length} · pubs ponctuelles:${ads.length}`);
 
     // 5. Tracklist en base
     await dbInsert('video_tracks', withPaths.map((t, i) => ({
@@ -258,8 +271,8 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       duration_sec: durSec, utm_url: utmUrl, theme: curation.understanding || mood,
       youtube_video_id: youtubeId, youtube_url: youtubeUrl, thumbnail_url: thumbnailUrl,
       published_at: finalStatus === 'published' ? new Date().toISOString() : null,
-      background_asset: chosenBgAssets[0]?.id || null, banner_asset: adAssets[0]?.id || null,
-      background_asset_ids: chosenBgAssets.map(a => a.id), note: bgWarning
+      background_asset: chosenBgAssets[0]?.id || null, banner_asset: usedAdIds[0] || null,
+      background_asset_ids: chosenBgAssets.map(a => a.id), banner_asset_ids: usedAdIds, note: bgWarning
     });
     await logStep('done', 'ok');
 

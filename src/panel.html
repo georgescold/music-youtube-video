@@ -121,6 +121,7 @@
   <h1>Assets</h1>
   <p class="page-sub">Bannières, clips et fonds utilisés dans les vidéos.</p>
 
+  <p class="page-sub" style="margin:-20px 0 20px">💡 Pour une <b>publicité</b> : choisis ensuite son <b>mode</b> (ponctuelle ou permanente), sa <b>position</b> (glisser-déposer), et mets-la en <b>pause</b> quand tu veux l'exclure sans la supprimer.</p>
   <h2>Déposer un asset</h2>
   <div class="kind-row">
     <label><input type="radio" name="kind" value="background" checked><span>Fond (image ou vidéo)</span></label>
@@ -251,20 +252,27 @@ function renderList() {
     div.className = 'asset';
     const isImg = (a.mime_type || '').startsWith('image/');
     const isVid = (a.mime_type || '').startsWith('video/');
+    const isAd = a.kind === 'ad';
+    const isPaused = a.active === false;
     div.innerHTML = `
-      <div class="prev">${
+      <div class="prev" style="${isPaused ? 'opacity:.45' : ''}">${
         a.url && isImg ? '<img src="' + a.url + '" alt="">' :
         a.url && isVid ? '<video src="' + a.url + '" muted></video>' :
         '<span class="icon">📄</span>'
       }</div>
       <div class="body">
-        <span class="badge">${KIND_LABEL[a.kind] || a.kind}</span>
+        <span class="badge">${KIND_LABEL[a.kind] || a.kind}</span>${isPaused ? ' <span class="badge" style="background:#f2e2c8;color:#7a5a12;border-color:#e3caa0">⏸ En pause</span>' : ''}
         <div class="name" title="${a.filename}">${a.filename}</div>
         <div class="meta tnum"><span>${fmtSize(a.size_bytes)}</span><span>${fmtDate(a.uploaded_at)}</span></div>
+        ${isAd ? `<div class="field" style="margin-top:8px"><select class="mode-sel" style="width:100%;font-size:12px;padding:6px 8px">
+          <option value="periodic"${a.ad_mode !== 'constant' ? ' selected' : ''}>⏱ Ponctuelle — apparaît à certains moments</option>
+          <option value="constant"${a.ad_mode === 'constant' ? ' selected' : ''}>📌 Permanente — visible sur toute la vidéo</option>
+        </select></div>` : ''}
         <div class="row">
           <a href="${a.url || '#'}" target="_blank">Aperçu ↗</a>
           <span style="display:flex;gap:6px">
-            ${a.kind === 'ad' ? '<button class="pos-btn">Position</button>' : ''}
+            ${isAd ? '<button class="pos-btn">Position</button>' : ''}
+            <button class="tog-btn">${isPaused ? 'Activer' : 'Mettre en pause'}</button>
             <button class="del-btn" data-id="${a.id}" data-path="${a.storage_path}">Supprimer</button>
           </span>
         </div>
@@ -273,6 +281,15 @@ function renderList() {
       const { id, path } = e.currentTarget.dataset;
       if (!confirm('Supprimer cet asset ?')) return;
       await fetch('/api/assets/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, storage_path: path }) });
+      load();
+    };
+    div.querySelector('.tog-btn').onclick = async () => {
+      await fetch('/api/assets/toggle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, active: isPaused }) });
+      load();
+    };
+    const modeSel = div.querySelector('.mode-sel');
+    if (modeSel) modeSel.onchange = async () => {
+      await fetch('/api/assets/mode', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: a.id, ad_mode: modeSel.value }) });
       load();
     };
     const posBtn = div.querySelector('.pos-btn');
