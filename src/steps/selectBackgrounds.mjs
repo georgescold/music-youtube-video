@@ -33,9 +33,15 @@ export async function selectBackgrounds({ channelId, pool, mode = 'slideshow', c
       .filter(a => recency.has(a.id))
       .sort((a, b) => recency.get(b.id) - recency.get(a.id)); // distance la plus grande d'abord (=le plus ancien)
     chosen = [...eligible, ...stale].slice(0, need);
+    // On n'alerte QUE si la banque est réellement trop petite pour respecter l'écart (problème à corriger en
+    // ajoutant des images). Si la banque est assez grande mais qu'aucune image « fraîche » n'est dispo à cet
+    // instant (ex. l'historique récent — d'anciens diaporamas — les a toutes utilisées), c'est transitoire :
+    // ça se résorbe tout seul au fil des vidéos, donc pas d'alerte trompeuse.
     if (mode === 'single' || count > 0) {
-      const needTotal = need * (gap + 1); // nb d'images pour ne jamais répéter dans la fenêtre d'écart
-      warning = `Pas assez d'images de fond : ${pool.length} en banque pour un écart de ${gap} vidéos (il en faudrait au moins ${needTotal}). Une image récente a dû être réutilisée. Ajoute des images dans l'onglet Assets pour éviter les doublons.`;
+      const needTotal = need * (gap + 1); // nb d'images distinctes pour ne jamais répéter dans la fenêtre d'écart
+      if (pool.length < needTotal) {
+        warning = `Pas assez d'images de fond : ${pool.length} en banque, il en faudrait au moins ${needTotal} pour ne jamais répéter sur ${gap} vidéos. Ajoute des images dans l'onglet Assets pour éviter les doublons.`;
+      }
     }
   }
   return { chosen, warning };

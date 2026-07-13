@@ -178,8 +178,12 @@ async function brainTick() {
     let due;
     if (modeFixed) {
       if (!times.length) continue;                                     // mode heures précises mais aucun créneau -> rien
-      due = times.filter((t, i) => nowMin >= slotTargetMin(t, i, todayKey)).length; // créneaux dont l'heure (tirée) est passée
-      if (due === 0) continue;                                         // pas encore l'heure du 1er créneau
+      // Anti-rattrapage : si le planning a été (re)programmé AUJOURD'HUI, on ignore les créneaux déjà passés
+      // à ce moment-là (on ne rattrape pas rétroactivement une heure antérieure au réglage).
+      const setAt = ch.schedule_set_at ? new Date(ch.schedule_set_at) : null;
+      const setMin = (setAt && setAt.toISOString().slice(0, 10) === todayKey) ? (setAt.getHours() * 60 + setAt.getMinutes()) : -1;
+      due = times.filter((t, i) => { const m = slotTargetMin(t, i, todayKey); return m != null && m > setMin && nowMin >= m; }).length;
+      if (due === 0) continue;                                         // pas encore l'heure du 1er créneau (ou déjà passés au réglage)
     } else {
       const start = ch.publish_time_start || (ch.daily_publish_time ? String(ch.daily_publish_time).slice(0, 5) : '18:00');
       const end = ch.publish_time_end || start;
@@ -969,6 +973,11 @@ const server = http.createServer(async (req, res) => {
       if (isHHMM(b.publish_time_start)) patch.publish_time_start = b.publish_time_start;
       if (isHHMM(b.publish_time_end)) patch.publish_time_end = b.publish_time_end;
       if (isHHMM(b.publish_time_start)) patch.daily_publish_time = b.publish_time_start; // rétro-compat
+      // Anti-rattrapage : on horodate le moment où le planning est (re)programmé. Le cerveau ne rattrapera pas
+      // les créneaux déjà passés à cet instant pour aujourd'hui (voir brainTick). Uniquement si le planning change.
+      if ('publish_times' in patch || 'publish_schedule_mode' in patch || 'publish_time_start' in patch || 'publish_time_end' in patch || (typeof b.cron_enabled === 'boolean' && b.cron_enabled)) {
+        patch.schedule_set_at = new Date().toISOString();
+      }
       if (typeof b.ads_enabled === 'boolean') patch.ads_enabled = b.ads_enabled;
       if (b.ad_frequency_min != null) patch.ad_frequency_min = Math.max(1, Number(b.ad_frequency_min) || 10);
       if (b.ad_duration_sec != null) patch.ad_duration_sec = Math.max(2, Number(b.ad_duration_sec) || 8);
@@ -1001,6 +1010,11 @@ const server = http.createServer(async (req, res) => {
       for (const k of ['objective', 'product_desc', 'product_url', 'affiliate_url', 'affiliate_label']) if (typeof b[k] === 'string') patch[k] = b[k].trim();
       if (Array.isArray(b.inspiration_urls)) patch.inspiration_urls = b.inspiration_urls.map(s => String(s).trim()).filter(Boolean).slice(0, 20);
       // Secrets : mis à jour uniquement si une nouvelle valeur non vide est fournie (sinon on conserve l'existant).
+      // Garde-fou : un secret client Google est toujours de la forme « GOCSPX-… » (~35 car.). On refuse une
+      // valeur manifestement erronée (ex. « testeur5 » collé par erreur) qui casserait le refresh token.
+      if (typeof b.yt_client_secret === 'string' && b.yt_client_secret.trim() && !/^GOCSPX-[\w-]{20,}$/.test(b.yt_client_secret.trim())) {
+        return json(res, { ok: false, error: 'Secret client YouTube invalide : il doit ressembler à « GOCSPX-… » (copié depuis Google Cloud → Identifiants). Valeur ignorée pour ne pas casser la connexion.' });
+      }
       for (const [field, incoming] of [['yt_client_secret', b.yt_client_secret], ['yt_refresh_token', b.yt_refresh_token], ['epidemic_jwt', b.epidemic_jwt], ['claude_token', b.claude_token]]) {
         if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
       }
