@@ -905,6 +905,31 @@ const server = http.createServer(async (req, res) => {
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
+    // Reprend une génération en échec (ex : interrompue par un redéploiement du serveur). Le dossier de
+    // travail (tracklist, audio téléchargé, montage) ne survit PAS à un redémarrage -> pas de reprise
+    // « au même endroit » possible ; on relance une génération fraîche pour la même chaîne, en un clic.
+    if (req.method === 'POST' && path === '/api/videos/resume') {
+      const b = await readJsonBody(req);
+      const [v] = await dbSelect('videos', `?id=eq.${b.id}`);
+      if (!v) return json(res, { ok: false, error: 'vidéo introuvable' });
+      if (v.status !== 'failed') return json(res, { ok: false, error: 'seule une vidéo en échec peut être reprise' });
+      if (genState.running) return json(res, { ok: false, error: 'une génération est déjà en cours — réessaie dans un instant' });
+      const vch = v.channel_id ? await getChannel(v.channel_id) : await getActiveChannel();
+      if (!vch) return json(res, { ok: false, error: 'chaîne introuvable' });
+      const preEp = await testEpidemic({ jwt: channelCreds(vch).epidemicJwt, cookies: channelCreds(vch).epidemicCookies }).catch(() => ({ ok: false }));
+      if (!preEp.ok) {
+        notifyChannel(vch, 'epidemic_auth', { title: '🔑 Epidemic déconnecté', description: EPIDEMIC_AUTH_MESSAGE, color: COLORS.error });
+        return json(res, { ok: false, error: EPIDEMIC_AUTH_MESSAGE });
+      }
+      const preYt = await testYouTube(channelCreds(vch).youtube || {}).catch(() => ({ ok: false, detail: '' }));
+      if (!preYt.ok) {
+        notifyChannel(vch, 'youtube_auth', { title: '🔴 YouTube déconnecté', description: 'Le compte YouTube de « ' + (vch?.name || '') + ' » n\'est plus autorisé. Reconnecte-le pour reprendre les générations.', color: COLORS.error });
+        return json(res, { ok: false, reconnect: 'youtube', error: 'YouTube n\'est plus autorisé pour cette chaîne' + (preYt.detail ? ' (' + preYt.detail + ')' : '') + '. Reconnecte-la en un clic 👇' });
+      }
+      await dbDelete('videos', `id=eq.${b.id}`).catch(() => {}); // rien d'utilisable dans la tentative échouée
+      const started = generateOnce({ dryRun: false, channelId: vch.id });
+      return json(res, { ok: true, started });
+    }
 
     // ── Chaînes ──
     if (req.method === 'GET' && path === '/api/channels') {
@@ -1156,8 +1181,18 @@ server.listen(PORT, HOST, () => {
   setupStatsRefresh().catch(e => console.error('[stats] init KO', e.message));
   setupWeeklyRecap().catch(e => console.error('[recap] init KO', e.message));
   setupCoach().catch(e => console.error('[coach] init KO', e.message));
-  // Nettoyage des générations orphelines (interrompues par un redémarrage) -> marquées échec.
-  dbPatch('videos', 'status=in.(curating,downloading,rendering,uploading)', { status: 'failed', error: 'interrompu par un redémarrage du serveur' })
-    .then(r => { if (r?.length) console.log(`[cleanup] ${r.length} génération(s) orpheline(s) marquée(s) échec`); })
+  // Nettoyage des générations orphelines (interrompues par un redémarrage/redéploiement) -> marquées échec,
+  // avec un `note` dédié pour que l'UI propose directement le bouton « Reprendre ».
+  dbPatch('videos', 'status=in.(curating,downloading,rendering,uploading)', { status: 'failed', error: 'interrompu par un redémarrage du serveur', note: 'interrupted' })
+    .then(async rows => {
+      if (!rows?.length) return;
+      console.log(`[cleanup] ${rows.length} génération(s) orpheline(s) marquée(s) échec`);
+      const byChannel = new Map();
+      for (const v of rows) { const k = v.channel_id || 'none'; if (!byChannel.has(k)) byChannel.set(k, 0); byChannel.set(k, byChannel.get(k) + 1); }
+      for (const [chId, n] of byChannel) {
+        const ch = chId !== 'none' ? await getChannel(chId).catch(() => null) : await getActiveChannel().catch(() => null);
+        if (ch) notifyChannel(ch, 'gen_failed', { title: '⏸️ Génération interrompue', description: `${n} génération(s) interrompue(s) par un redémarrage du serveur — clique « Reprendre » sur la vidéo en échec pour relancer.`, color: COLORS.warn });
+      }
+    })
     .catch(() => {});
 });

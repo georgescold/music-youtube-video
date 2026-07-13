@@ -224,6 +224,7 @@
 document.getElementById('logout').onclick = async (e) => { e.preventDefault(); await fetch('/api/auth/logout', { method: 'POST' }); location.href = '/login'; };
 
 const STATUS_LABEL = { queued: 'En file', curating: 'Curation', downloading: 'Téléchargement', rendering: 'Montage', uploading: 'Upload', pending_review: 'À valider', approved: 'Approuvée', published: 'Publiée', rejected: 'Rejetée', failed: 'Échec' };
+const NOTE_LABEL = { interrupted: 'Interrompue par un redémarrage du serveur — clique « Reprendre »', epidemic_auth: 'Epidemic déconnecté au moment de la génération', youtube_auth: 'YouTube déconnecté au moment de la génération' };
 const genBtn = document.getElementById('gen');
 const genbar = document.getElementById('genbar');
 const list = document.getElementById('list');
@@ -380,9 +381,10 @@ async function load() {
         <div style="flex:1;min-width:0">
           <div class="vid-title">${v.title || '(sans titre)'}</div>
           <div class="vid-meta tnum">${fmtDate(v.created_at)}${v.duration_sec ? ' · ' + fmtDur(v.duration_sec) : ''}${v.mood ? ' · ' + v.mood : ''}${overview}</div>
-          ${v.note ? '<div class="vid-note">⚠️ ' + v.note.replace(/</g, '&lt;') + '</div>' : ''}
+          ${v.note ? '<div class="vid-note">⚠️ ' + (NOTE_LABEL[v.note] || v.note).replace(/</g, '&lt;') + '</div>' : ''}
         </div>
         <span class="badge ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
+        ${v.status === 'failed' ? '<button class="btn-sec resume-head" title="Relance une génération fraîche pour cette chaîne">🔁 Reprendre</button>' : ''}
         <button class="btn-sec btn-danger del-head" title="Supprimer">Supprimer</button>
       </div>
       <div class="vid-body ${open ? 'open' : ''}" id="body_${v.id}">
@@ -417,6 +419,22 @@ async function load() {
     div.querySelector('.vid-head').onclick = () => { openId = open ? null : v.id; load(); };
     const q = sel => div.querySelector(sel);
     if (q('.del-head')) q('.del-head').onclick = (e) => { e.stopPropagation(); act('/api/videos/delete', v.id, 'Supprimer cette vidéo (et la retirer de YouTube si elle y est) ?'); };
+    if (q('.resume-head')) q('.resume-head').onclick = async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget; btn.disabled = true; btn.textContent = '⏳ Reprise…';
+      try {
+        const r = await fetch('/api/videos/resume', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: v.id }) });
+        const d = await r.json();
+        if (!d.ok) {
+          if (d.reconnect === 'youtube') showYtReconnect(d.error);
+          else alert(d.error || 'Erreur');
+          btn.disabled = false; btn.textContent = '🔁 Reprendre';
+          return;
+        }
+        startPolling();
+        load();
+      } catch (err) { alert('Erreur réseau'); btn.disabled = false; btn.textContent = '🔁 Reprendre'; }
+    };
     if (q('.save')) q('.save').onclick = (e) => save(v.id, e.target);
     if (q('.approve')) q('.approve').onclick = () => act('/api/videos/approve', v.id, 'Publier cette vidéo sur YouTube (passage en public) ?');
     if (q('.reject')) q('.reject').onclick = () => act('/api/videos/reject', v.id);
