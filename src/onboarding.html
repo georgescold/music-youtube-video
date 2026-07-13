@@ -123,6 +123,7 @@ function renderYoutubeSetup() {
     bot("Cette chaîne a besoin de <b>son propre projet Google Cloud</b> — créé sous <b>le compte Google qui possède cette chaîne YouTube</b> (pas forcément le même que tes autres chaînes).") +
     `<ol class="note" style="padding-left:18px;margin-top:2px">
        <li>Connecté avec <b>le compte Google de cette chaîne YouTube</b>, ouvre <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud → Identifiants</a> (crée un projet si besoin).</li>
+       <li>Configure l'<b>Écran de consentement OAuth</b> si ce n'est pas déjà fait (type <b>Externe</b>, nom + email de contact suffisent). Puis dans l'onglet <b>Audience</b>, clique <b>« Publier l'application »</b> (passe de « Test » à « En production ») — évite d'avoir à ajouter chaque compte un par un comme « utilisateur test ».<br>⚠️ Sans la validation complète de Google (site web, politique de confidentialité…), l'app reste <b>« non vérifiée »</b> : à chaque connexion, un écran d'avertissement apparaîtra — clique <b>« Paramètres avancés »</b> puis <b>« Accéder à [nom de l'app] (dangereux) »</b> pour continuer. Ça reste parfaitement fonctionnel pour un usage perso / petite équipe.</li>
        <li>« Créer des identifiants » → <b>ID client OAuth</b> → type <b>Application Web</b>.</li>
        <li>Dans <b>URI de redirection autorisés</b>, ajoute exactement :<br><span class="code">${redirectUri}</span></li>
        <li>Copie le <b>Client ID</b> et le <b>Client secret</b> ci-dessous.</li>
@@ -158,6 +159,7 @@ function renderYoutubeConnect() {
      </div>
      <div id="yt-msg" class="note"></div>
      <div class="note">Une fenêtre Google va s'ouvrir : choisis <b>le compte qui possède cette chaîne</b>, coche les autorisations.
+     Si un écran <b>« Google n'a pas validé cette application »</b> apparaît, c'est normal (app non vérifiée) : clique <b>« Paramètres avancés »</b> → <b>« Accéder à… (dangereux) »</b>.
      <br><a class="btn-link" id="b-redo" style="padding:0">Changer le projet Google Cloud</a> · Alternative : <a href="/settings" target="_blank">coller un refresh token à la main</a>.</div>
      <div class="actions">
        <button class="btn-link" id="b-skip">Passer cette étape</button><div class="spacer"></div>
