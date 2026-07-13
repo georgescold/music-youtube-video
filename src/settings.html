@@ -145,8 +145,8 @@
       <div class="field"><label>Channel ID</label><input id="f-yt_channel_id" placeholder="UC..."></div>
     </div>
     <div class="grid2">
-      <div class="field"><label>Client secret</label><input id="f-yt_client_secret" type="password" autocomplete="off"><div class="hint" id="h-yt_client_secret"></div></div>
-      <div class="field"><label>Refresh token</label><input id="f-yt_refresh_token" type="password" autocomplete="off"><div class="hint" id="h-yt_refresh_token"></div></div>
+      <div class="field"><label>Client secret</label><input id="f-yt_client_secret" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" data-lpignore="true" data-1p-ignore data-form-type="other"><div class="hint" id="h-yt_client_secret"></div></div>
+      <div class="field"><label>Refresh token</label><input id="f-yt_refresh_token" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" data-lpignore="true" data-1p-ignore data-form-type="other"><div class="hint" id="h-yt_refresh_token"></div></div>
     </div>
     <div class="result" id="r-youtube"></div>
   </div>
@@ -154,14 +154,14 @@
   <h2>Epidemic Sound</h2>
   <div class="card">
     <div class="card-head"><span class="card-title">Accès catalogue musical</span><button class="btn btn-sec" data-test="epidemic">Tester</button></div>
-    <div class="field"><label>Token API (JWT)</label><input id="f-epidemic_jwt" type="password" autocomplete="off"><div class="hint" id="h-epidemic_jwt"></div></div>
+    <div class="field"><label>Token API (JWT)</label><input id="f-epidemic_jwt" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" data-lpignore="true" data-1p-ignore data-form-type="other"><div class="hint" id="h-epidemic_jwt"></div></div>
     <div class="result" id="r-epidemic"></div>
   </div>
 
   <h2>Claude</h2>
   <div class="card">
     <div class="card-head"><span class="card-title">Génération titres/description/curation</span><button class="btn btn-sec" data-test="claude">Tester</button></div>
-    <div class="field"><label>Token OAuth (sk-ant-oat01-…)</label><input id="f-claude_token" type="password" autocomplete="off"><div class="hint" id="h-claude_token"></div></div>
+    <div class="field"><label>Token OAuth (sk-ant-oat01-…)</label><input id="f-claude_token" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" data-lpignore="true" data-1p-ignore data-form-type="other"><div class="hint" id="h-claude_token"></div></div>
     <div class="field" style="max-width:360px"><label>Modèle utilisé (titres, description, curation, analyses)</label>
       <select id="f-claude_model" style="width:100%">
         <option value="sonnet">Sonnet 5 — équilibré, recommandé (défaut)</option>
@@ -515,7 +515,7 @@ $('save').onclick = async () => {
   };
   const d = await (await fetch('/api/settings/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
   $('save').disabled = false;
-  if (d.ok) { $('savemsg').textContent = 'Enregistré ✓'; ['yt_client_secret', 'yt_refresh_token', 'epidemic_jwt', 'claude_token', 'discord_webhook'].forEach(k => $('f-' + k).value = ''); loadSettings(); }
+  if (d.ok) { $('savemsg').textContent = d.credWarning ? ('Enregistré ✓ — ⚠️ ' + d.credWarning) : 'Enregistré ✓'; ['yt_client_secret', 'yt_refresh_token', 'epidemic_jwt', 'claude_token', 'discord_webhook'].forEach(k => $('f-' + k).value = ''); loadSettings(); }
   else $('savemsg').textContent = 'Erreur : ' + (d.error || '');
 };
 

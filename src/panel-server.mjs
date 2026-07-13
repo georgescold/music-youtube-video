@@ -1010,13 +1010,21 @@ const server = http.createServer(async (req, res) => {
       for (const k of ['objective', 'product_desc', 'product_url', 'affiliate_url', 'affiliate_label']) if (typeof b[k] === 'string') patch[k] = b[k].trim();
       if (Array.isArray(b.inspiration_urls)) patch.inspiration_urls = b.inspiration_urls.map(s => String(s).trim()).filter(Boolean).slice(0, 20);
       // Secrets : mis à jour uniquement si une nouvelle valeur non vide est fournie (sinon on conserve l'existant).
-      // Garde-fou : un secret client Google est toujours de la forme « GOCSPX-… » (~35 car.). On refuse une
-      // valeur manifestement erronée (ex. « testeur5 » collé par erreur) qui casserait le refresh token.
-      if (typeof b.yt_client_secret === 'string' && b.yt_client_secret.trim() && !/^GOCSPX-[\w-]{20,}$/.test(b.yt_client_secret.trim())) {
-        return json(res, { ok: false, error: 'Secret client YouTube invalide : il doit ressembler à « GOCSPX-… » (copié depuis Google Cloud → Identifiants). Valeur ignorée pour ne pas casser la connexion.' });
-      }
+      // Garde-fou anti-écrasement : chaque identifiant a un FORMAT attendu. Une valeur implausible (typiquement
+      // un mot de passe de connexion injecté par l'autofill du navigateur dans un champ « laissé vide ») est
+      // IGNORÉE — on ne l'écrit pas (et on ne bloque pas le reste de la sauvegarde). Cf. l'incident « testeur5 ».
+      const credFormat = {
+        yt_client_secret: v => /^GOCSPX-[\w-]{10,}$/.test(v),   // secret Google
+        yt_refresh_token: v => v.length >= 40,                  // refresh token Google (~100+ car.)
+        epidemic_jwt: v => v.length >= 40,                      // JWT long
+        claude_token: v => /^sk-ant-/.test(v)                   // token OAuth Claude
+      };
+      const skippedCreds = [];
       for (const [field, incoming] of [['yt_client_secret', b.yt_client_secret], ['yt_refresh_token', b.yt_refresh_token], ['epidemic_jwt', b.epidemic_jwt], ['claude_token', b.claude_token]]) {
-        if (typeof incoming === 'string' && incoming.trim()) patch[field] = incoming.trim();
+        if (typeof incoming !== 'string' || !incoming.trim()) continue; // vide -> on conserve l'existant
+        const val = incoming.trim();
+        if (credFormat[field](val)) patch[field] = val;
+        else skippedCreds.push(field);
       }
       const updated = await updateChannel(ch.id, patch);
       // Identifiants partagés du compte (Epidemic/Claude/OAuth client) -> répercutés sur TOUTES les chaînes.
@@ -1042,7 +1050,9 @@ const server = http.createServer(async (req, res) => {
           }
         }
       }
-      return json(res, { ok: true, channel: channelPublicView(updated), resumed });
+      const credLabels = { yt_client_secret: 'Secret client YouTube', yt_refresh_token: 'Refresh token YouTube', epidemic_jwt: 'Token Epidemic', claude_token: 'Token Claude' };
+      const credWarning = skippedCreds.length ? ('Valeur(s) ignorée(s) car format invalide (souvent l\'autofill du navigateur) : ' + skippedCreds.map(f => credLabels[f]).join(', ') + '. L\'identifiant existant a été conservé.') : null;
+      return json(res, { ok: true, channel: channelPublicView(updated), resumed, credWarning });
     }
     if (req.method === 'POST' && path === '/api/test/discord') {
       const ch = await getActiveChannel();
