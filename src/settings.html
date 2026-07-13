@@ -173,16 +173,11 @@
     <div class="result" id="r-claude"></div>
   </div>
 
-  <h2>Réglages de publication</h2>
+  <h2>Réglages de génération</h2>
   <div class="card">
-    <p class="hint" style="margin:-2px 0 14px">L'heure et la durée sont des <b>fourchettes</b> : à chaque vidéo, le système tire une valeur au hasard entre le min et le max (mets la même valeur des deux côtés pour figer).</p>
-    <div class="grid2">
-      <div class="field"><label>Fenêtre horaire (mode auto, si aucune heure fixée)</label>
-        <div style="display:flex;align-items:center;gap:8px"><input id="f-publish_time_start" type="time" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-publish_time_end" type="time" style="flex:1"></div>
-      </div>
-      <div class="field"><label>Durée cible (min → max, minutes)</label>
-        <div style="display:flex;align-items:center;gap:8px"><input id="f-target_min" type="number" min="10" max="240" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-target_max" type="number" min="10" max="240" style="flex:1"></div>
-      </div>
+    <p class="hint" style="margin:-2px 0 14px">S'appliquent à <b>chaque</b> vidéo (génération manuelle comme automatique). La durée est une <b>fourchette</b> : à chaque vidéo, une valeur est tirée au hasard entre le min et le max (mets la même valeur des deux côtés pour figer). Le <b>planning de publication</b> (heures, fenêtre) se règle plus bas, une fois la génération automatique activée.</p>
+    <div class="field" style="max-width:340px"><label>Durée cible (min → max, minutes)</label>
+      <div style="display:flex;align-items:center;gap:8px"><input id="f-target_min" type="number" min="10" max="240" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-target_max" type="number" min="10" max="240" style="flex:1"></div>
     </div>
     <div class="field"><label>Lien Compaatible / base UTM</label><input id="f-utm_base" placeholder="https://compaatible.app/"></div>
   </div>
@@ -262,6 +257,9 @@
       <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Si activé : une vidéo est générée chaque jour dans la fenêtre horaire choisie. Si désactivé : rien ne se génère seul, tu génères manuellement via « Générer une vidéo ».</div>
     </div>
     <div id="cron-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:-6px 0 16px 3px;display:none">
+      <div class="field" style="max-width:340px;margin:0 0 16px"><label>Fenêtre horaire (mode auto, si aucune heure fixée)</label>
+        <div style="display:flex;align-items:center;gap:8px"><input id="f-publish_time_start" type="time" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-publish_time_end" type="time" style="flex:1"></div>
+      </div>
       <div class="field" style="margin:0 0 4px"><label>Heures de publication par jour</label>
         <div id="pub-times" style="display:flex;flex-direction:column;gap:8px"></div>
         <button class="btn btn-sec" id="add-time" type="button" style="margin-top:8px">+ Ajouter une heure</button>
