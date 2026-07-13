@@ -175,8 +175,9 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
   // Chapitres YouTube : 1re entrée forcée à 0:00 (règle YouTube), titres descriptifs -> +watch time, ranking multi-requêtes.
   const chapters = tracklist.map((l, i) => `${i === 0 ? '0:00' : l.stamp} ${l.title}${l.artist ? ' — ' + l.artist : ''}`).join('\n');
 
-  // CTA conversion : lien d'affiliation de la chaîne si fourni, sinon le lien Compaatible (UTM).
-  const ctaUrl = strategy.affiliate_url || utmUrl || '';
+  // CTA conversion : lien unique, toujours tracké UTM (construit en amont depuis l'override d'affiliation
+  // s'il existe, sinon le site produit, sinon le défaut Compaatible).
+  const ctaUrl = utmUrl || '';
   const ctaLabel = strategy.affiliate_label || 'Test de compatibilité gratuit';
   const productLine = strategy.product_desc || 'Cette playlist t\'est proposée par Compaatible, l\'app qui trouve les gens vraiment faits pour toi.';
   const ctaBlock = ['━━━━━━━━━━━━━━━━━━', '💞 ' + productLine, '👉 ' + ctaLabel + ' : ' + ctaUrl, '━━━━━━━━━━━━━━━━━━'].join('\n');

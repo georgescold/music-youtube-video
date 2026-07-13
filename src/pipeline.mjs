@@ -152,7 +152,8 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     const audioPath = await concatAudio(withPaths.map(t => t.path), join(workDir, 'mix.mp3'), { controller });
     const tracklist = buildTracklist(withPaths);
     await logStep('metadata', 'start');
-    const utmBase = channel?.utm_base || 'https://compaatible.app/';
+    // Lien du CTA : override d'affiliation si fourni, sinon le site produit, sinon le défaut. Toujours tracké UTM.
+    const utmBase = channel?.affiliate_url || channel?.product_url || channel?.utm_base || 'https://compaatible.app/';
     const utmUrl = utmBase + (utmBase.includes('?') ? '&' : '?') + 'utm_source=youtube&utm_campaign=aubonmoment&utm_content=' + vid;
     // Historique de la chaîne : titres (dédup), liens internes (maillage), hashtags récents (rotation).
     const prior = await dbSelect('videos', `?title=not.is.null${chanFilter}&select=title,youtube_url,hashtags&order=created_at.desc&limit=200`).catch(() => []);

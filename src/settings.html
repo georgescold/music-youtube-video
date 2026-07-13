@@ -95,10 +95,10 @@
     <p class="hint" style="margin:-2px 0 14px">Guide l'écriture des titres/descriptions : objectif, produit à promouvoir, lien d'affiliation mis en avant, et analyse des vidéos références.</p>
     <div class="field"><label>Objectif de la chaîne</label><textarea id="f-objective" rows="2" placeholder="Ex : toucher les femmes célibataires, donner envie de croire en l'amour, ramener vers l'app."></textarea></div>
     <div class="field"><label>Produit à promouvoir</label><textarea id="f-product_desc" rows="2" placeholder="Ex : Compaatible, l'app qui trouve les gens vraiment faits pour toi."></textarea></div>
-    <div class="field"><label>Site web du produit (analysé pour la stratégie SEO)</label><input id="f-product_url" placeholder="https://compaatible.com"><div style="font-size:12px;color:var(--color-mut);margin-top:4px">Le plan SEO est généré à partir de l'analyse de ce site (mix reach YouTube × produit) — auto-généré quand tu enregistres une nouvelle URL.</div></div>
+    <div class="field"><label>Site web du produit</label><input id="f-product_url" placeholder="https://compaatible.com"><div style="font-size:12px;color:var(--color-mut);margin-top:4px">Le <b>seul lien à remplir</b> : il sert (1) à analyser le site pour la stratégie SEO + les articles de blog, et (2) de <b>destination du bouton</b> dans la description (avec tracking UTM ajouté automatiquement). Plan SEO auto-généré à l'enregistrement d'une nouvelle URL.</div></div>
     <div class="grid2">
-      <div class="field"><label>Lien d'affiliation (mis en avant dans la description)</label><input id="f-affiliate_url" placeholder="https://…"></div>
-      <div class="field"><label>Texte du lien (CTA)</label><input id="f-affiliate_label" placeholder="Teste ta compatibilité gratuitement"></div>
+      <div class="field"><label>Lien de destination — override (optionnel)</label><input id="f-affiliate_url" placeholder="Vide = le site produit ci-dessus"><div style="font-size:12px;color:var(--color-mut);margin-top:4px">Uniquement si tu veux envoyer les spectateurs <b>ailleurs</b> que le site produit (landing dédiée, lien d'affiliation…). Le tracking UTM est ajouté automatiquement.</div></div>
+      <div class="field"><label>Texte du bouton (CTA)</label><input id="f-affiliate_label" placeholder="Teste ta compatibilité gratuitement"></div>
     </div>
     <div class="field"><label>Vidéos références</label><div style="font-size:12.5px;color:var(--color-mut)">Elles se gèrent dans l'onglet <a href="/references" style="color:var(--color-ink);font-weight:600">Références</a> (avec tes chansons de référence). Les boutons ci-dessous les analysent.</div></div>
     <div class="card-head" style="margin-top:6px">
@@ -179,7 +179,6 @@
     <div class="field" style="max-width:340px"><label>Durée cible (min → max, minutes)</label>
       <div style="display:flex;align-items:center;gap:8px"><input id="f-target_min" type="number" min="10" max="240" style="flex:1"><span style="color:var(--color-mut2)">→</span><input id="f-target_max" type="number" min="10" max="240" style="flex:1"></div>
     </div>
-    <div class="field"><label>Lien Compaatible / base UTM</label><input id="f-utm_base" placeholder="https://compaatible.app/"></div>
   </div>
 
   <h2>Publicités dans la vidéo</h2>
@@ -349,7 +348,6 @@ async function loadSettings() {
   buildTimes(s.settings.publish_times || []);
   $('f-target_min').value = Math.round((s.settings.target_min_sec || s.settings.target_duration_sec || 5400) / 60);
   $('f-target_max').value = Math.round((s.settings.target_max_sec || s.settings.target_duration_sec || 5400) / 60);
-  $('f-utm_base').value = s.settings.utm_base || '';
   $('f-ad_freq').value = s.settings.ad_frequency_min ?? 10;
   $('f-ad_dur').value = s.settings.ad_duration_sec ?? 8;
   $('f-ad_intro').checked = s.settings.ad_intro !== false;
@@ -467,7 +465,7 @@ $('save').onclick = async () => {
     epidemic_jwt: $('f-epidemic_jwt').value, claude_token: $('f-claude_token').value, claude_model: $('f-claude_model').value,
     publish_time_start: $('f-publish_time_start').value, publish_time_end: $('f-publish_time_end').value,
     publish_times: collectTimes(),
-    target_min_min: Number($('f-target_min').value), target_max_min: Number($('f-target_max').value), utm_base: $('f-utm_base').value,
+    target_min_min: Number($('f-target_min').value), target_max_min: Number($('f-target_max').value),
     ads_enabled: $('f-ads_enabled').checked,
     ad_frequency_min: Number($('f-ad_freq').value), ad_duration_sec: Number($('f-ad_dur').value),
     ad_intro: $('f-ad_intro').checked, ad_outro: $('f-ad_outro').checked,
