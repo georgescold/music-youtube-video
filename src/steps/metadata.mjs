@@ -53,27 +53,29 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     plan.pillars?.length ? 'Piliers de contenu de la chaîne : ' + plan.pillars.join(' · ') : '',
     "Le HOOK (1re phrase de la description) doit contenir le mot-clé principal DÈS LES 40 PREMIERS CARACTÈRES (avant la troncature mobile).",
     "",
-    "RÈGLES DU TITRE (le plus important) :",
-    "- Le titre NE DÉCRIT JAMAIS l'image ni une scène (interdit : « il t'embrasse dans le champ », « un couple sous la pluie »).",
-    "- Il EXPRIME et DÉCUPLE l'émotion que ressent LE SPECTATEUR, comme un miroir de son propre vécu.",
-    "- C'est un DÉCLENCHEUR (trigger) : il fait réagir à coup sûr et donne envie de cliquer parce qu'il reflète PARFAITEMENT ce que la personne ressent à cet instant.",
-    "- Voix intime, souvent à la 1re personne, brute et sincère, profonde. Comme une confidence ou une parole de chanson.",
-    "- Exemples du TON visé (ne pas recopier) : « si tu me voyais pleurer dans ma chambre », « nous nous retrouverons un jour… », « nos chemins se séparent mais je sais qu'on se retrouvera », « je t'aime encore même si je ne devrais plus ».",
-    "- Inclure la balise [Playlist]. Toujours différent des titres déjà publiés.",
-    emotion ? `ÉMOTION À DÉCUPLER dans le titre : « ${emotion.name} »${emotion.description ? ' — ' + emotion.description : ''}. Écris CE que ressent le spectateur qui vit cette émotion (pas ce qu'on voit).` : '',
+    "RÈGLES DU TITRE (priorité N°1 de toute la vidéo) :",
+    "1. REPRODUIS LES PATTERNS DE TES VIDÉOS DE RÉFÉRENCE. Les 'titres gagnants' fournis sont ta MATRICE : même structure, même longueur, même ponctuation, même ressort psychologique. C'est CE qui déclenche le clic — c'est la priorité absolue.",
+    "2. Le titre est le MONOLOGUE INTÉRIEUR BRUT du spectateur — une pensée/confidence qu'IL pourrait écrire lui-même à 3h du matin, dans SA voix, sur SON vécu, à la 1re personne.",
+    "3. INTERDIT ABSOLU : décrire une ACTION, une SCÈNE ou un DÉCOR. Exemples de ce qu'il NE FAUT JAMAIS écrire : « courir vers l'inconnu », « danser sous la pluie », « partir à deux à l'aventure », « il t'embrasse dans le champ ». Ce sont des ACTIONS/SCÈNES, pas des émotions ressenties. On n'écrit pas ce qui se passe, on écrit ce que la personne RESSENT au fond d'elle.",
+    "4. ÉMOTION FINE et précise, jamais générique : pas « l'amour » ou « le bonheur », mais le pincement exact (le manque à 3h du matin, l'aveu qu'on n'ose pas dire, le « et si on s'était ratés », la personne qui hante encore…).",
+    "5. TEST DÉCISIF : un inconnu qui lit le titre doit se dire « c'est exactement moi / mon histoire » et cliquer par réflexe. Si le titre pourrait légender une photo, il est MAUVAIS.",
+    "6. Voix intime, brute, sincère, profonde — comme une parole de chanson. Inclure [Playlist]. Jamais un titre déjà publié.",
+    "BON ton (ne pas recopier) : « si tu me voyais pleurer dans ma chambre », « je t'aime encore même si je ne devrais plus », « il est 3h et tu me manques toujours », « personne ne saura à quel point je t'ai aimé ».",
+    emotion ? `BOUSSOLE ÉMOTIONNELLE (usage INTERNE — ne reprends PAS ses mots, ne décris PAS la scène) : « ${emotion.name} »${emotion.description ? ' — ' + emotion.description : ''}. Traduis CE ressenti en la voix intime du spectateur, dans le style de tes références.` : '',
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."
   ].filter(Boolean).join('\n');
 
   const avoidSet = new Set(avoidTitles.map(normTitle));
   // Contexte partagé (mood + playbook déduit des vidéos de référence + titres à éviter).
   const ctx = (extraAvoid = []) => [
-    `Ambiance / mood de la playlist : ${mood}.`,
-    // Les exemples "amour" ne servent que faute de contexte propre à la chaîne (sinon ils biaiseraient un autre domaine).
-    !hasContext ? 'Exemples de tons de titres appréciés (inspire-toi du style, adapte au domaine de la chaîne, ne recopie aucun mot pour mot) :\n' + TITLE_SEEDS.map(s => '- ' + s).join('\n') : '',
-    pb.title_patterns?.length ? 'FORMULES DE TITRES QUI MARCHENT (déduites de tes vidéos références — applique l\'esprit et la structure, pas le copier-coller) :\n' + pb.title_patterns.slice(0, 12).map(s => '- ' + s).join('\n') : '',
-    pb.title_style?.length ? 'STYLE D\'ÉCRITURE des titres à respecter (casse, ponctuation, ton…) : ' + pb.title_style.join(' · ') : '',
-    pb.winning_examples?.length ? 'Titres gagnants réels (pour caler le ton, NE recopie pas) :\n' + pb.winning_examples.slice(0, 5).map(s => '- ' + s).join('\n') : '',
+    // ★ LA MATRICE d'abord : les titres/patterns qui MARCHENT chez tes références = le modèle prioritaire.
+    pb.winning_examples?.length ? '★★★ TA MATRICE — TITRES DE RÉFÉRENCE QUI CARTONNENT. Reproduis leur STRUCTURE, leur TON et leur ANGLE (sans recopier les mots) — c\'est la priorité N°1 :\n' + pb.winning_examples.slice(0, 6).map(s => '- ' + s).join('\n') : '',
+    pb.title_patterns?.length ? 'FORMULES QUI MARCHENT (structure + ressort psychologique à réutiliser) :\n' + pb.title_patterns.slice(0, 12).map(s => '- ' + s).join('\n') : '',
+    pb.title_style?.length ? 'STYLE D\'ÉCRITURE à respecter (casse, ponctuation, longueur, point de vue…) : ' + pb.title_style.join(' · ') : '',
     pb.emotional_hooks?.length ? 'Déclencheurs émotionnels à exploiter : ' + pb.emotional_hooks.slice(0, 12).join(', ') : '',
+    // Faute de références analysées, on donne des exemples de ton (secondaire).
+    !hasContext && !pb.winning_examples?.length ? 'Exemples de tons appréciés (inspire-toi du style, ne recopie pas) :\n' + TITLE_SEEDS.map(s => '- ' + s).join('\n') : '',
+    `Ambiance / mood de la playlist : ${mood}.`,
     (avoidTitles.length || extraAvoid.length) ? '\nNe RÉUTILISE JAMAIS aucun de ces titres déjà publiés (ni une variante quasi identique) :\n' + [...avoidTitles, ...extraAvoid].slice(-40).map(s => '- ' + s).join('\n') : ''
   ];
   // Spécif du reste (description/SEO), commune à toutes les passes qui produisent les métadonnées.
@@ -93,9 +95,10 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
   // Passe 1 : plusieurs titres candidats, angles variés.
   const candidatesUser = (extraAvoid = []) => [
     ...ctx(extraAvoid), '',
-    'Génère 8 titres CANDIDATS, TOUS différents entre eux. Chacun est un DÉCLENCHEUR puissant qui DÉCUPLE l\'émotion RESSENTIE par le spectateur.',
-    'Explore un ANGLE et un ressort émotionnel DIFFÉRENTS à chaque candidat (le manque, l\'espoir, la nostalgie, l\'aveu, la promesse…). Ne décris JAMAIS l\'image.',
-    'Chaque candidat : 60-70 caractères max, respecte le style de la chaîne. N\'ajoute PAS [Playlist] (ce sera fait ensuite).',
+    'Génère 8 titres CANDIDATS, TOUS différents. Chacun CALQUÉ sur la STRUCTURE de ta matrice (titres de référence) et écrit comme le MONOLOGUE INTÉRIEUR BRUT du spectateur (sa pensée à 3h du matin, 1re personne).',
+    'Explore un ressort émotionnel FIN et DIFFÉRENT à chaque candidat (le manque, l\'aveu qu\'on n\'ose pas, le « et si », la personne qui hante, le pardon impossible…).',
+    'INTERDIT : décrire une action/scène/décor (« courir vers l\'inconnu », « danser sous la pluie »…). On écrit ce que la personne RESSENT, pas ce qui se passe.',
+    'Chaque candidat : 60-70 caractères max, dans le style exact de la chaîne. N\'ajoute PAS [Playlist] (ce sera fait ensuite).',
     'Format EXACT : {"candidates":["...","...","...","...","...","...","...","..."]}'
   ].filter(Boolean).join('\n');
   // Passe 2 : Claude JUGE les candidats, choisit (et peut affiner) le meilleur, puis produit le reste.
@@ -103,13 +106,14 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     ...ctx(extraAvoid), '',
     'Voici des titres CANDIDATS pour cette vidéo :',
     candidates.map((c, i) => `${i + 1}. ${c}`).join('\n'), '',
-    'CHOISIS LE MEILLEUR selon ces critères, dans cet ordre :',
-    '1. Il DÉCUPLE au maximum l\'émotion RESSENTIE par le spectateur (un miroir de son propre vécu).',
-    '2. Il donne une envie IRRÉSISTIBLE de cliquer.',
-    '3. CHAQUE MOT est intentionnel et pesé, au service de l\'émotion — zéro mot faible ou de remplissage.',
-    '4. Il respecte le style de la chaîne et ne décrit JAMAIS l\'image.',
-    '5. Il est différent des titres déjà publiés.',
-    'Tu peux AFFINER le gagnant mot à mot (couper un mot faible, resserrer le rythme) si ça le rend plus fort — garde son esprit.',
+    'D\'ABORD, ÉLIMINE tout candidat qui décrit une ACTION ou une SCÈNE plutôt qu\'une émotion ressentie (ex : « courir vers l\'inconnu ») — disqualifié d\'office.',
+    'Puis CHOISIS LE MEILLEUR selon ces critères, dans cet ordre :',
+    '1. Il colle le mieux aux PATTERNS de ta matrice (structure/ton/angle des titres de référence qui cartonnent).',
+    '2. C\'est le MONOLOGUE INTÉRIEUR BRUT du spectateur : il lit et se dit « c\'est exactement moi/mon histoire ».',
+    '3. Émotion FINE et précise (pas générique), envie IRRÉSISTIBLE de cliquer.',
+    '4. CHAQUE MOT est pesé, au service de l\'émotion — zéro mot faible ou de remplissage.',
+    '5. Différent des titres déjà publiés.',
+    'Tu peux AFFINER le gagnant mot à mot pour le rapprocher encore de tes références et le rendre plus percutant — garde son esprit.',
     '', 'Puis renvoie le titre final (avec [Playlist]) + le reste. Format EXACT :',
     '{"title":"... [Playlist]","hook":"...","keywords":["..."],"hashtags":["..."],"tags":["..."]}'
   ].filter(Boolean).join('\n');
