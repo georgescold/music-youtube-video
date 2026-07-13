@@ -7,8 +7,11 @@ const SENSITIVE = ['yt_client_secret', 'yt_refresh_token', 'epidemic_jwt', 'clau
 // Le client OAuth Google (id/secret), le refresh token et l'ID de chaîne sont PROPRES À CHAQUE CHAÎNE
 // (une chaîne peut être sur un autre projet Google / un autre utilisateur / avoir son propre quota).
 export const SHARED_ACCOUNT = ['epidemic_jwt', 'epidemic_cookies', 'claude_token'];
-// Copiés d'une chaîne existante à la CRÉATION (défaut pratique), mais modifiables ensuite par chaîne — pas propagés.
-const INHERIT_ON_CREATE = [...SHARED_ACCOUNT, 'yt_client_id', 'yt_client_secret'];
+// Hérité d'une chaîne existante à la CRÉATION (accès de compte uniquement). Le client OAuth Google
+// (yt_client_id/secret) N'EST JAMAIS hérité : chaque chaîne YouTube appartient potentiellement à un
+// compte Google différent, donc doit avoir SON PROPRE projet Google Cloud (créé sous CE compte). Hériter
+// le client d'une autre chaîne provoque un redirect_uri_mismatch / mauvais compte au moment de connecter.
+const INHERIT_ON_CREATE = [...SHARED_ACCOUNT];
 
 export async function listChannels() {
   return dbSelect('channels', '?order=created_at.asc');
@@ -22,8 +25,8 @@ export async function getActiveChannel() {
 }
 export async function createChannel(name) {
   await dbPatch('channels', 'is_active=eq.true', { is_active: false }).catch(() => {});
-  // Hérite (à la création) des accès partagés + du client OAuth par DÉFAUT (blobs chiffrés copiés tels quels).
-  // Le client OAuth devient alors PROPRE à la nouvelle chaîne (modifiable, non lié aux autres).
+  // Hérite (à la création) des accès de compte partagés (Epidemic/Claude) uniquement. Le client YouTube
+  // (yt_client_id/secret) reste vide : cette chaîne doit avoir son propre projet Google Cloud.
   const existing = (await listChannels())[0];
   const inherit = {};
   if (existing) for (const k of INHERIT_ON_CREATE) if (existing[k] != null) inherit[k] = existing[k];
