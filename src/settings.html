@@ -230,13 +230,6 @@
         Écrire le titre sur la miniature
       </label>
       <div style="font-size:11.5px;color:var(--color-mut2);margin:5px 0 12px">Le titre (sans la balise [Playlist]) est écrit centré sur l'image. Décoche pour garder l'image seule, sans texte.</div>
-      <div class="field" id="thumb-font-wrap" style="max-width:320px;margin:0"><label>Police du titre</label>
-        <select id="f-thumbnail_font" style="width:100%">
-          <option value="playfair">Playfair Display — serif élégant (Compaatible)</option>
-          <option value="cormorant">Cormorant Garamond — serif délicat (Compaatible)</option>
-          <option value="inter">Inter — sans-serif moderne (Compaatible)</option>
-        </select>
-      </div>
     </div>
     <div class="field" style="margin-top:14px">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px;font-weight:600;color:var(--color-ink)">
@@ -244,6 +237,13 @@
         Écrire le titre sur le fond de la vidéo
       </label>
       <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Incruste le titre (sans [Playlist]) au centre de la vidéo elle-même, avec la même police que la miniature. Décoche pour une vidéo sans texte.</div>
+    </div>
+    <div class="field" id="thumb-font-wrap" style="max-width:320px;margin-top:14px"><label>Police du titre (miniature &amp; vidéo)</label>
+      <select id="f-thumbnail_font" style="width:100%">
+        <option value="playfair">Playfair Display — serif élégant (Compaatible)</option>
+        <option value="cormorant">Cormorant Garamond — serif délicat (Compaatible)</option>
+        <option value="inter">Inter — sans-serif moderne (Compaatible)</option>
+      </select>
     </div>
   </div>
 
@@ -390,10 +390,18 @@ async function loadSettings() {
 }
 
 // Construit les cases à cocher des notifications, groupées, depuis notif_types + les préférences de la chaîne.
+// Les préférences de notifications sont propres à Discord : n'ont de sens qu'avec un webhook configuré.
+let discordConfigured = false;
+function syncDiscord() {
+  const active = discordConfigured || !!$('f-discord_webhook').value.trim();
+  $('notif-block').style.display = active ? '' : 'none';
+}
+$('f-discord_webhook').addEventListener('input', syncDiscord);
+
 function buildNotifs(s) {
   const types = s.notif_types; const list = $('notif-list');
   if (!types || !list) return;
-  $('notif-block').style.display = '';
+  discordConfigured = !!(s.discord && s.discord.configured);
   const prefs = s.discord_notifs || {};
   const groups = {};
   for (const [key, t] of Object.entries(types)) { (groups[t.group] = groups[t.group] || []).push([key, t]); }
@@ -408,6 +416,7 @@ function buildNotifs(s) {
     }
   }
   $('f-daily_report_hour').value = s.daily_report_hour ?? 8;
+  syncDiscord();
 }
 function collectNotifs() {
   const out = {};
@@ -442,10 +451,13 @@ $('add-time').onclick = () => addTimeRow('12:00');
 
 function syncThumb() {
   $('thumb-opts').style.display = $('f-thumbnail_enabled').checked ? '' : 'none';
-  $('thumb-font-wrap').style.display = $('f-thumbnail_text').checked ? '' : 'none';
+  // La police sert au titre sur la miniature ET/OU sur la vidéo -> visible dès que l'un des deux est actif.
+  const onThumb = $('f-thumbnail_enabled').checked && $('f-thumbnail_text').checked;
+  $('thumb-font-wrap').style.display = (onThumb || $('f-video_text').checked) ? '' : 'none';
 }
 $('f-thumbnail_enabled').addEventListener('change', syncThumb);
 $('f-thumbnail_text').addEventListener('change', syncThumb);
+$('f-video_text').addEventListener('change', syncThumb);
 
 $('save').onclick = async () => {
   $('save').disabled = true; $('savemsg').textContent = 'Enregistrement…';
