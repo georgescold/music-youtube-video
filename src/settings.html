@@ -188,7 +188,8 @@
         <input type="checkbox" id="f-ads_enabled" style="width:16px;height:16px;cursor:pointer">
         Activer les publicités dans la vidéo
       </label>
-      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">Désactivé par défaut. Active pour incruster tes assets « Publicité » dans les vidéos de cette chaîne. Dépose et gère tes pubs (position, mode, pause, variantes) dans l'onglet <a href="/" style="color:var(--color-ink);font-weight:600">Assets</a> — ici se règlent seulement la fréquence et les moments d'affichage.</div>
+      <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">⚠️ <b>Interrupteur général</b> : décoché, <b>aucune pub ne s'affiche</b> — ni permanente, ni ponctuelle, même si tu les as configurées dans Assets. Coché, chaque pub suit son propre mode (réglé dans <a href="/" style="color:var(--color-ink);font-weight:600">Assets</a>) : 📌 Permanente = visible en continu · ⏱ Ponctuelle = par moments (réglés ci-dessous une fois activé).</div>
+      <div id="ads-summary" style="font-size:11.5px;color:var(--color-mut);margin-top:8px;padding:8px 11px;background:var(--color-soft2);border-radius:8px"></div>
     </div>
     <div id="ad-opts" style="border-left:2px solid var(--color-rule);padding-left:14px;margin:12px 0 0 3px;display:none">
       <p class="hint" style="margin:0 0 14px">Fréquence et moments d'affichage des pubs <b>ponctuelles</b> (pas les permanentes, toujours visibles). La <b>position</b>, le <b>mode</b> (ponctuelle/permanente) et les <b>variantes de contraste</b> de chaque pub se règlent dans l'onglet <a href="/" style="color:var(--color-ink);font-weight:600">Assets</a>.</p>
@@ -368,6 +369,7 @@ async function loadSettings() {
   $('f-ad_outro').checked = s.settings.ad_outro !== false;
   $('f-ads_enabled').checked = s.settings.ads_enabled === true;
   syncAds();
+  renderAdsSummary(s.ads_summary, s.settings.ads_enabled === true);
   $('f-background_mode').value = s.settings.background_mode || 'slideshow';
   $('f-slideshow_count').value = s.settings.slideshow_count ?? 0;
   $('f-reuse_gap').value = s.settings.reuse_gap ?? 30;
@@ -444,6 +446,19 @@ $('f-background_mode').addEventListener('change', syncBgMode);
 // Options repliées si non activées, dépliées si activées (pubs, automatisation CRON, coach).
 function syncAds() { $('ad-opts').style.display = $('f-ads_enabled').checked ? '' : 'none'; }
 $('f-ads_enabled').addEventListener('change', syncAds);
+// État concret des pubs (Assets) directement visible ici : coupe court à toute ambiguïté sur ce que fait
+// réellement l'interrupteur général, sans avoir à aller vérifier dans un autre onglet.
+function renderAdsSummary(sum, enabled) {
+  const box = $('ads-summary'); if (!box || !sum) return;
+  if (!sum.total) { box.textContent = "Aucune pub déposée pour l'instant — ajoute-en dans l'onglet Assets."; return; }
+  const parts = [];
+  if (sum.constant) parts.push(sum.constant + ' permanente' + (sum.constant > 1 ? 's' : ''));
+  if (sum.periodic) parts.push(sum.periodic + ' ponctuelle' + (sum.periodic > 1 ? 's' : ''));
+  const paused = sum.total - sum.active;
+  box.innerHTML = (enabled ? '✅ ' : '⏸️ ') + sum.active + ' pub(s) prête(s) : ' + (parts.join(' · ') || 'aucune active') +
+    (paused ? ' · ' + paused + ' en pause' : '') +
+    (enabled ? '' : ' <b>— mais l\'interrupteur ci-dessus est décoché, donc rien ne s\'affiche.</b>');
+}
 function syncCron() { $('cron-opts').style.display = $('f-cron_enabled').checked ? '' : 'none'; }
 $('f-cron_enabled').addEventListener('change', syncCron);
 function syncCoach() { $('coach-opts').style.display = $('f-coach_enabled').checked ? '' : 'none'; }

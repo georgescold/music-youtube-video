@@ -1000,7 +1000,19 @@ const server = http.createServer(async (req, res) => {
 
     // ── Paramètres (chaîne active) ──
     if (req.method === 'GET' && path === '/api/settings') {
-      return json(res, { ...(channelPublicView(await getActiveChannel()) || {}), notif_types: NOTIF_TYPES });
+      const ch = await getActiveChannel();
+      // Résumé des pubs configurées (Assets) : donne un état clair directement dans Paramètres, pour
+      // qu'on sache d'un coup d'œil ce que fait vraiment l'interrupteur « Activer les publicités ».
+      let adsSummary = { total: 0, constant: 0, periodic: 0, active: 0 };
+      if (ch) {
+        const ads = await dbSelect('assets', `?channel_id=eq.${ch.id}&kind=eq.ad&select=ad_mode,active`).catch(() => []);
+        adsSummary = {
+          total: ads.length, active: ads.filter(a => a.active !== false).length,
+          constant: ads.filter(a => a.active !== false && a.ad_mode === 'constant').length,
+          periodic: ads.filter(a => a.active !== false && a.ad_mode !== 'constant').length
+        };
+      }
+      return json(res, { ...(channelPublicView(ch) || {}), ads_summary: adsSummary, notif_types: NOTIF_TYPES });
     }
     if (req.method === 'POST' && path === '/api/settings/save') {
       const b = await readJsonBody(req);
