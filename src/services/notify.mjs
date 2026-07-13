@@ -33,13 +33,15 @@ export function notifEnabled(channel, type) {
   return NOTIF_TYPES[type] ? NOTIF_TYPES[type].def !== false : true;
 }
 // Émet une notification : TOUJOURS dans l'app (cloche), et sur Discord si la préférence l'autorise.
+// Le nom de la chaîne est TOUJOURS rappelé sur Discord (un webhook peut mélanger plusieurs chaînes dans
+// le même salon/canal, contrairement à la cloche in-app qui est déjà filtrée sur la chaîne active).
 export function notifyChannel(channel, type, embed) {
   recordInApp(channel, type, embed); // in-app : voit tout, même sans webhook
   if (!channel || !channel.discord_webhook || !notifEnabled(channel, type)) return Promise.resolve(false);
-  return sendDiscord(channel.discord_webhook, embed).catch(() => false);
+  return sendDiscord(channel.discord_webhook, { ...embed, footer: { text: '📺 ' + (channel.name || 'Chaîne') } }).catch(() => false);
 }
 
-export async function sendDiscord(webhook, { title, description, color = COLORS.info, url, image, thumbnail } = {}) {
+export async function sendDiscord(webhook, { title, description, color = COLORS.info, url, image, thumbnail, footer } = {}) {
   if (!webhook) return false;
   const embed = { color };
   if (title) embed.title = String(title).slice(0, 256);
@@ -47,6 +49,7 @@ export async function sendDiscord(webhook, { title, description, color = COLORS.
   if (url) embed.url = url;
   if (image) embed.image = { url: image };
   if (thumbnail) embed.thumbnail = { url: thumbnail };
+  if (footer) embed.footer = { text: String(footer.text || footer).slice(0, 256) };
   try {
     const r = await fetch(webhook, {
       method: 'POST', headers: { 'content-type': 'application/json' },

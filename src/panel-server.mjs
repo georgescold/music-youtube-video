@@ -1105,7 +1105,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/api/test/discord') {
       const ch = await getActiveChannel();
       if (!ch?.discord_webhook) return json(res, { ok: false, detail: 'aucun webhook configuré' });
-      const ok = await sendDiscord(ch.discord_webhook, { title: '🔔 Test — The Playlist Youtube', description: 'Le webhook de la chaîne « ' + (ch.name || '') + ' » est bien connecté.', color: COLORS.info });
+      const ok = await sendDiscord(ch.discord_webhook, { title: '🔔 Test — The Playlist Youtube', description: 'Le webhook de la chaîne « ' + (ch.name || '') + ' » est bien connecté.', color: COLORS.info, footer: { text: '📺 ' + (ch.name || 'Chaîne') } });
       return json(res, { ok, detail: ok ? 'message envoyé sur Discord' : 'échec de l\'envoi' });
     }
     // Analyse les chaînes d'inspiration -> playbook (patterns titres/miniatures).

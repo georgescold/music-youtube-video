@@ -88,6 +88,24 @@
     transition: border-color .2s ease, color .2s ease;
   }
   .row button:hover { border-color: var(--color-ink); color: var(--color-ink); }
+
+  /* Contrôles de pub (mode, groupe de variante) : même langage visuel que le reste de l'outil
+     (coins arrondis, bordure fine, police Manrope) plutôt que le rendu natif du navigateur. */
+  .ad-ctrl { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .ad-ctrl-row { display: flex; gap: 6px; }
+  .field-sel, .field-inp {
+    width: 100%; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--color-ink);
+    background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px;
+    padding: 7px 10px; outline: none; box-sizing: border-box; transition: border-color .2s ease;
+  }
+  .field-inp::placeholder { color: var(--color-mut2); font-weight: 500; }
+  .field-sel {
+    cursor: pointer; -webkit-appearance: none; appearance: none; padding-right: 26px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236e6a62' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat; background-position: right 9px center;
+  }
+  .field-sel:hover, .field-inp:hover, .field-sel:focus, .field-inp:focus { border-color: var(--color-ink); }
+  :root[data-theme="dark"] .field-sel { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23aaaaaa' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>"); }
   .empty { color: var(--color-mut); font-size: 13px; padding: 16px 0; }
 
   .nav { display: flex; align-items: center; gap: 4px; }
@@ -264,23 +282,25 @@ function renderList() {
         <span class="badge">${KIND_LABEL[a.kind] || a.kind}</span>${isPaused ? ' <span class="badge" style="background:#f2e2c8;color:#7a5a12;border-color:#e3caa0">⏸ En pause</span>' : ''}
         <div class="name" title="${a.filename}">${a.filename}</div>
         <div class="meta tnum"><span>${fmtSize(a.size_bytes)}</span><span>${fmtDate(a.uploaded_at)}</span></div>
-        ${isAd ? `<div class="field" style="margin-top:8px"><select class="mode-sel" style="width:100%;font-size:12px;padding:6px 8px">
-          <option value="periodic"${a.ad_mode !== 'constant' ? ' selected' : ''}>⏱ Ponctuelle — apparaît à certains moments</option>
-          <option value="constant"${a.ad_mode === 'constant' ? ' selected' : ''}>📌 Permanente — visible sur toute la vidéo</option>
-        </select></div>
-        <div class="field" style="margin-top:6px;display:flex;gap:6px">
-          <input class="variant-group" placeholder="Groupe (ex : Logo)" title="Donne le même nom à 2 pubs pour qu'une seule soit choisie automatiquement selon le contraste du fond" value="${(a.variant_group || '').replace(/"/g, '&quot;')}" style="flex:1;font-size:12px;padding:6px 8px">
-          <select class="variant-contrast" style="flex:1;font-size:12px;padding:6px 8px">
-            <option value=""${!a.contrast_variant ? ' selected' : ''}>Toujours (pas de variante)</option>
-            <option value="for_light_bg"${a.contrast_variant === 'for_light_bg' ? ' selected' : ''}>Si fond clair</option>
-            <option value="for_dark_bg"${a.contrast_variant === 'for_dark_bg' ? ' selected' : ''}>Si fond sombre</option>
+        ${isAd ? `<div class="ad-ctrl">
+          <select class="mode-sel field-sel" title="Ponctuelle : apparaît à certains moments (fréquence réglable dans Paramètres). Permanente : visible sur toute la vidéo.">
+            <option value="periodic"${a.ad_mode !== 'constant' ? ' selected' : ''}>⏱ Ponctuelle</option>
+            <option value="constant"${a.ad_mode === 'constant' ? ' selected' : ''}>📌 Permanente</option>
           </select>
+          <div class="ad-ctrl-row">
+            <input class="variant-group field-inp" placeholder="Groupe (variante)" title="Donne le même nom à 2 pubs pour qu'une seule soit choisie automatiquement selon le contraste du fond" value="${(a.variant_group || '').replace(/"/g, '&quot;')}" style="flex:1.3">
+            <select class="variant-contrast field-sel" style="flex:1" title="Pour quel fond cette version est-elle prévue ?">
+              <option value=""${!a.contrast_variant ? ' selected' : ''}>Toujours</option>
+              <option value="for_light_bg"${a.contrast_variant === 'for_light_bg' ? ' selected' : ''}>Fond clair</option>
+              <option value="for_dark_bg"${a.contrast_variant === 'for_dark_bg' ? ' selected' : ''}>Fond sombre</option>
+            </select>
+          </div>
         </div>` : ''}
         <div class="row">
           <a href="${a.url || '#'}" target="_blank">Aperçu ↗</a>
           <span style="display:flex;gap:6px">
             ${isAd ? '<button class="pos-btn">Position</button>' : ''}
-            <button class="tog-btn">${isPaused ? 'Activer' : 'Mettre en pause'}</button>
+            <button class="tog-btn">${isPaused ? 'Activer' : 'Pause'}</button>
             <button class="del-btn" data-id="${a.id}" data-path="${a.storage_path}">Supprimer</button>
           </span>
         </div>
