@@ -174,7 +174,15 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     await logStep('metadata', 'start');
     // Lien du CTA : override d'affiliation si fourni, sinon le site produit, sinon le défaut. Toujours tracké UTM.
     const utmBase = channel?.affiliate_url || channel?.product_url || channel?.utm_base || 'https://compaatible.app/';
-    const utmUrl = utmBase + (utmBase.includes('?') ? '&' : '?') + 'utm_source=youtube&utm_campaign=aubonmoment&utm_content=' + vid;
+    // utm_campaign = LA CHAÎNE qui génère (jamais une valeur fixe partagée) : sinon deux chaînes distinctes
+    // envoient un trafic indiscernable dans les analytics, malgré des liens par ailleurs bien séparés.
+    const slugify = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'chaine';
+    // Insère les paramètres AVANT un éventuel fragment (#ancre) : après, ils seraient avalés par l'ancre
+    // et jamais lus comme paramètres (ex : une base en "...#aubonmoment" cassait le tracking UTM).
+    const hashIdx = utmBase.indexOf('#');
+    const utmHead = hashIdx === -1 ? utmBase : utmBase.slice(0, hashIdx);
+    const utmHash = hashIdx === -1 ? '' : utmBase.slice(hashIdx);
+    const utmUrl = utmHead + (utmHead.includes('?') ? '&' : '?') + 'utm_source=youtube&utm_campaign=' + slugify(channel?.name) + '&utm_content=' + vid + utmHash;
     // Historique de la chaîne : titres (dédup), liens internes (maillage), hashtags récents (rotation).
     const prior = await dbSelect('videos', `?title=not.is.null${chanFilter}&select=title,youtube_url,hashtags&order=created_at.desc&limit=200`).catch(() => []);
     const avoidTitles = prior.map(v => v.title).filter(Boolean);

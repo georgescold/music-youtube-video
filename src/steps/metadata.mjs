@@ -178,7 +178,9 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
   // CTA conversion : lien unique, toujours tracké UTM (construit en amont depuis l'override d'affiliation
   // s'il existe, sinon le site produit, sinon le défaut Compaatible).
   const ctaUrl = utmUrl || '';
-  const ctaLabel = strategy.affiliate_label || 'Test de compatibilité gratuit';
+  // Retire toute ponctuation de fin (le champ « libellé du CTA » contient parfois déjà un ':' ou un '.') pour
+  // ne jamais doubler le séparateur ajouté juste après (ex : "...ici : :" sinon).
+  const ctaLabel = (strategy.affiliate_label || 'Test de compatibilité gratuit').trim().replace(/[\s:.!?]+$/, '');
   const productLine = strategy.product_desc || 'Cette playlist t\'est proposée par Compaatible, l\'app qui trouve les gens vraiment faits pour toi.';
   const ctaBlock = ['━━━━━━━━━━━━━━━━━━', '💞 ' + productLine, '👉 ' + ctaLabel + ' : ' + ctaUrl, '━━━━━━━━━━━━━━━━━━'].join('\n');
 
