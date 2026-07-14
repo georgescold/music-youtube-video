@@ -214,8 +214,12 @@ export async function renderVideo({ backgrounds = [], ads = [], constantAds = []
     const boxH = Math.max(16, Math.round(height * (p.h ?? 0.40)));
     const ox = Math.min(width - 1, Math.max(0, Math.round(width * (p.x ?? 0.68))));
     const oy = Math.min(height - 1, Math.max(0, Math.round(height * (p.y ?? 0.55))));
-    const inIdx = ad.isVideo ? addInput(['-stream_loop', '-1', '-i', ad.path]) : addInput(['-loop', '1', '-i', ad.path]);
-    filters.push(`[${inIdx}:v]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1[adc${ci}]`);
+    // IMPORTANT PERF : sans -framerate borné, une image en boucle (-loop 1) se décode/scale par défaut à
+    // 25 im/s en interne — pour une pub PERMANENTE (toute la durée), ça multiplie le travail de scale par
+    // ~10x sur une vidéo d'1h+ (mesuré : rendu ×7-8 plus lent avec une seule pub permanente). fps=${fps}
+    // ramène ce travail au débit RÉELLEMENT utile (celui de la sortie), avant même le scale.
+    const inIdx = ad.isVideo ? addInput(['-stream_loop', '-1', '-i', ad.path]) : addInput(['-loop', '1', '-framerate', String(fps), '-i', ad.path]);
+    filters.push(`[${inIdx}:v]fps=${fps},scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1[adc${ci}]`);
     filters.push(`[${vLabel}][adc${ci}]overlay=${ox}:${oy}:shortest=1[vc${ci}]`); // pas de enable= -> permanent
     vLabel = `vc${ci}`;
   });
@@ -235,8 +239,11 @@ export async function renderVideo({ backgrounds = [], ads = [], constantAds = []
       const boxH = Math.max(16, Math.round(height * (p.h ?? 0.40)));
       const ox = Math.min(width - 1, Math.max(0, Math.round(width * (p.x ?? 0.68))));
       const oy = Math.min(height - 1, Math.max(0, Math.round(height * (p.y ?? 0.55))));
-      const inIdx = ad.isVideo ? addInput(['-stream_loop', '-1', '-i', ad.path]) : addInput(['-loop', '1', '-i', ad.path]);
-      filters.push(`[${inIdx}:v]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1[ad${ai}]`);
+      // Même optimisation que les pubs permanentes (cf. commentaire plus haut) : borne le débit interne de
+      // la boucle au débit de sortie AVANT le scale, sinon le scale tourne à 25 im/s pour toute la vidéo
+      // même si la pub n'est composée (enable=) que sur quelques fenêtres courtes.
+      const inIdx = ad.isVideo ? addInput(['-stream_loop', '-1', '-i', ad.path]) : addInput(['-loop', '1', '-framerate', String(fps), '-i', ad.path]);
+      filters.push(`[${inIdx}:v]fps=${fps},scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,setsar=1[ad${ai}]`);
       const enable = mine.map(([s, e]) => `between(t,${s.toFixed(2)},${e.toFixed(2)})`).join('+');
       filters.push(`[${vLabel}][ad${ai}]overlay=${ox}:${oy}:enable='${enable}':shortest=1[v${ai}]`);
       vLabel = `v${ai}`;
