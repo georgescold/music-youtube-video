@@ -7,7 +7,7 @@ const TITLE_SEEDS = [
   "si tu me voyais pleurer dans ma chambre",
   "nous nous retrouverons un jour…",
   "nos chemins se séparent mais je sais qu'on se retrouvera",
-  "je t'aime encore, même si je ne devrais plus",
+  "je t'aime encore même si je ne devrais plus",
   "il est 3h du matin et tu me manques toujours",
   "personne ne saura à quel point je t'ai aimé"
 ];
@@ -84,6 +84,7 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     "4. ÉMOTION FINE et précise, jamais générique : pas « l'amour » ou « le bonheur », mais le pincement exact (le manque à 3h du matin, l'aveu qu'on n'ose pas dire, le « et si on s'était ratés », la personne qui hante encore…).",
     "5. TEST DÉCISIF : un inconnu qui lit le titre doit se dire « c'est exactement moi / mon histoire » et cliquer par réflexe. Si le titre pourrait légender une photo, il est MAUVAIS.",
     "6. Voix intime, brute, sincère, profonde — comme une parole de chanson. Inclure [Playlist]. Jamais un titre déjà publié.",
+    "7. AUCUNE VIRGULE dans le titre, jamais, zéro exception. Si la formulation naturelle en appelle une, REFORMULE (une seule respiration, une structure plus courte, ou 'et'/'même si' à la place) plutôt que d'en poser une.",
     "BON ton (ne pas recopier) : « si tu me voyais pleurer dans ma chambre », « je t'aime encore même si je ne devrais plus », « il est 3h et tu me manques toujours », « personne ne saura à quel point je t'ai aimé ».",
     emotion ? `BOUSSOLE ÉMOTIONNELLE (usage INTERNE — ne reprends PAS ses mots, ne décris PAS la scène) : « ${emotion.name} »${emotion.description ? ' — ' + emotion.description : ''}. Traduis CE ressenti en la voix intime du spectateur, dans le style de tes références.` : '',
     "Réponds UNIQUEMENT par du JSON valide, sans texte autour."
@@ -122,6 +123,7 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     'Génère 8 titres CANDIDATS, TOUS différents. Chacun CALQUÉ sur la STRUCTURE de ta matrice (titres de référence) et écrit comme le MONOLOGUE INTÉRIEUR BRUT du spectateur (sa pensée à 3h du matin, 1re personne).',
     'Explore un ressort émotionnel FIN et DIFFÉRENT à chaque candidat (le manque, l\'aveu qu\'on n\'ose pas, le « et si », la personne qui hante, le pardon impossible…).',
     'INTERDIT : décrire une action/scène/décor (« courir vers l\'inconnu », « danser sous la pluie »…). On écrit ce que la personne RESSENT, pas ce qui se passe.',
+    'INTERDIT : la moindre virgule. Zéro, dans aucun candidat — reformule plutôt que d\'en placer une.',
     'Chaque candidat : 60-70 caractères max, dans le style exact de la chaîne. N\'ajoute PAS [Playlist] (ce sera fait ensuite).',
     'Format EXACT : {"candidates":["...","...","...","...","...","...","...","..."]}'
   ].filter(Boolean).join('\n');
@@ -130,14 +132,14 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
     ...ctx(extraAvoid), '',
     'Voici des titres CANDIDATS pour cette vidéo :',
     candidates.map((c, i) => `${i + 1}. ${c}`).join('\n'), '',
-    'D\'ABORD, ÉLIMINE tout candidat qui décrit une ACTION ou une SCÈNE plutôt qu\'une émotion ressentie (ex : « courir vers l\'inconnu ») — disqualifié d\'office.',
+    'D\'ABORD, ÉLIMINE tout candidat qui décrit une ACTION ou une SCÈNE plutôt qu\'une émotion ressentie (ex : « courir vers l\'inconnu ») — disqualifié d\'office. ÉLIMINE aussi tout candidat contenant une virgule — disqualifié d\'office, sans exception.',
     'Puis CHOISIS LE MEILLEUR selon ces critères, dans cet ordre :',
     '1. Il colle le mieux aux PATTERNS de ta matrice (structure/ton/angle des titres de référence qui cartonnent).',
     '2. C\'est le MONOLOGUE INTÉRIEUR BRUT du spectateur : il lit et se dit « c\'est exactement moi/mon histoire ».',
     '3. Émotion FINE et précise (pas générique), envie IRRÉSISTIBLE de cliquer.',
     '4. CHAQUE MOT est pesé, au service de l\'émotion — zéro mot faible ou de remplissage.',
     '5. Différent des titres déjà publiés.',
-    'Tu peux AFFINER le gagnant mot à mot pour le rapprocher encore de tes références et le rendre plus percutant — garde son esprit.',
+    'Tu peux AFFINER le gagnant mot à mot pour le rapprocher encore de tes références et le rendre plus percutant — garde son esprit. Si le gagnant contient une virgule, RETIRE-LA en reformulant (jamais de virgule dans le titre final).',
     '', 'Puis renvoie le titre final (avec [Playlist]) + le reste. Format EXACT :',
     '{"title":"... [Playlist]","hook":"...","keywords":["..."],"hashtags":["..."],"tags":["..."]}'
   ].filter(Boolean).join('\n');
@@ -170,6 +172,9 @@ export async function generateMetadata({ tracklist, mood = 'romantique', utmUrl,
       const extraAvoid = [];
       for (let attempt = 0; attempt < 3 && avoidSet.has(normTitle(meta.title)); attempt++) { extraAvoid.push(meta.title); meta = extractJson(await askClaude(system, buildUser(extraAvoid), model, { token })); }
     }
+    // Filet de sécurité déterministe : jamais de virgule dans le titre, même si le modèle en glisse une
+    // malgré la consigne (le titre IMPOSÉ par l'utilisateur, lui, reste TEL QUEL — jamais réécrit).
+    if (meta?.title) meta.title = String(meta.title).replace(/\s*,\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
   // Chapitres YouTube : 1re entrée forcée à 0:00 (règle YouTube), titres descriptifs -> +watch time, ranking multi-requêtes.
