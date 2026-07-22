@@ -15,6 +15,7 @@ import { analyzeImage } from './services/vision.mjs';
 import { chooseEmotionIndex } from './steps/coach.mjs';
 import { sendDiscord, notifyChannel, COLORS } from './services/notify.mjs';
 import { createEpidemicClient, isEpidemicAuthError, EPIDEMIC_AUTH_MESSAGE } from './services/epidemicMcp.mjs';
+import { saveRender } from './services/renders.mjs';
 
 const MOODS = ['romantique et doux', 'romantique nostalgique', 'romantique piano', 'romantique nuit', 'romantique acoustique'];
 
@@ -60,8 +61,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
   const adAssets = assets.filter(a => a.kind === 'ad' && isMedia(a));
 
   // Upload sur le compte YouTube DE LA CHAÎNE ACTIVE (pas le token d'env). Échec clair si pas connectée.
+  // En mode « téléchargement seul » on n'envoie rien : aucun compte YouTube n'est nécessaire.
   const ytCreds = channelCreds(channel).youtube;
-  if (!dryRun && !ytCreds?.refreshToken) {
+  const needsYouTube = (channel?.publish_mode || 'review') !== 'local';
+  if (!dryRun && needsYouTube && !ytCreds?.refreshToken) {
     throw new Error("Cette chaîne n'a pas de compte YouTube connecté. Va dans Paramètres → YouTube et connecte SON compte (Refresh token via « ↻ Depuis YouTube » ou autorisation) avant de générer, sinon la vidéo partirait sur une autre chaîne.");
   }
 
@@ -250,12 +253,18 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     // Mode "auto"   -> publiée DIRECTEMENT en public (pas de non-répertorié).
     // Mode "draft"  -> déposée en PRIVÉ ; tu la publies toi-même depuis YouTube Studio (meilleur reach, l'API ne publie rien).
     // Mode "review" -> non-répertorié, à relire puis valider dans l'outil.
+    // Mode "local"  -> AUCUN upload : le MP4 (+ miniature) est conservé sur /data pour téléchargement manuel.
     const mode = channel?.publish_mode || 'review';
     const autoPublish = mode === 'auto';
     const isDraft = mode === 'draft';
+    const isLocal = mode === 'local';
     const uploadPrivacy = autoPublish ? 'public' : (isDraft ? 'private' : 'unlisted');
     ck();
-    if (!dryRun) {
+    if (dryRun) {
+      await logStep('upload', 'skip', 'dry-run');
+    } else if (isLocal) {
+      await logStep('upload', 'skip', 'mode téléchargement seul — aucun envoi sur YouTube');
+    } else {
       await setStatus('uploading');
       await logStep('upload', 'start');
       const uploaded = await uploadVideo({
@@ -265,8 +274,6 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       youtubeId = uploaded.id;
       youtubeUrl = 'https://www.youtube.com/watch?v=' + youtubeId;
       await logStep('upload', 'ok', youtubeId);
-    } else {
-      await logStep('upload', 'skip', 'dry-run');
     }
 
     // 6b. Miniature : image + titre en texte (police embarquée). Activable par chaîne.
@@ -278,7 +285,9 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
       const tAsset = assets.find(a => a.id === thumbnailAssetId && a.kind === 'background' && (a.mime_type || '').startsWith('image'));
       if (tAsset) { try { thumbImagePath = (await fetchAssetFile(tAsset, workDir)).path; await logStep('thumbnail', 'ok', 'miniature imposée : ' + (tAsset.filename || tAsset.id)); } catch (e) { await logStep('thumbnail', 'warn', 'image miniature illisible : ' + e.message); } }
     }
-    if (!dryRun && youtubeId && channel?.thumbnail_enabled !== false && thumbImagePath) {
+    // En mode "local" il n'y a pas d'id YouTube : on génère quand même la miniature, pour la télécharger.
+    let localThumbPath = null;
+    if (!dryRun && (youtubeId || isLocal) && channel?.thumbnail_enabled !== false && thumbImagePath) {
       try {
         const thumbPath = join(workDir, 'thumbnail.jpg');
         renderThumbnail({
@@ -286,10 +295,21 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
           font: channel?.thumbnail_font || 'playfair',
           withText: channel?.thumbnail_text !== false
         });
-        await setThumbnail(youtubeId, thumbPath, ytCreds);
-        thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
+        localThumbPath = thumbPath;
+        if (youtubeId) {
+          await setThumbnail(youtubeId, thumbPath, ytCreds);
+          thumbnailUrl = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
+        }
         await logStep('thumbnail', 'ok');
       } catch (e) { await logStep('thumbnail', 'warn', e.message); }
+    }
+
+    // Mode "local" : on conserve le MP4 (+ miniature) sur le volume avant que workDir soit effacé.
+    if (!dryRun && isLocal) {
+      try {
+        saveRender({ videoId: vid, videoPath: outPath, thumbPath: localThumbPath });
+        await logStep('download', 'ok', 'fichier prêt à télécharger (les 5 derniers rendus sont conservés)');
+      } catch (e) { await logStep('download', 'warn', 'conservation du fichier impossible : ' + e.message); }
     }
 
     // Mode "auto" : la vidéo est déjà en public (uploadée ainsi). On force en sécurité + on marque publiée.
@@ -319,7 +339,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
         color: COLORS.ok, url: youtubeUrl || undefined, image: thumbnailUrl || undefined
       });
     } else if (finalStatus === 'pending_review') {
-      notifyChannel(channel, 'video_review', isDraft ? {
+      notifyChannel(channel, 'video_review', isLocal ? {
+        title: '💾 Vidéo prête à télécharger', description: `**${meta.title}**\nAucun envoi sur YouTube : télécharge le MP4 + la miniature depuis l'onglet Vidéos, puis publie-la toi-même.`,
+        color: COLORS.info
+      } : isDraft ? {
         title: '📥 Vidéo déposée (privée)', description: `**${meta.title}**\nPublie-la toi-même depuis YouTube Studio pour un meilleur reach : ${youtubeUrl || ''}`,
         color: COLORS.info, url: youtubeUrl || undefined, image: thumbnailUrl || undefined
       } : {

@@ -23,6 +23,8 @@ import { deriveEmotions } from './steps/emotions.mjs';
 import { generateSeoPlan } from './steps/seoPlan.mjs';
 import { fetchBlogArticles } from './services/webAnalyze.mjs';
 import { computeCadence, analyzeAndDecide, collectStats } from './steps/coach.mjs';
+import { renderFiles, deleteRender } from './services/renders.mjs';
+import { createReadStream, statSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -99,6 +101,7 @@ async function buildUpcoming(ch, now = new Date()) {
   const fmt = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
   const verb = ch.publish_mode === 'auto' ? 'Génération + publication (public)'
     : ch.publish_mode === 'draft' ? 'Génération + dépôt en privé (à publier toi-même)'
+    : ch.publish_mode === 'local' ? 'Génération seule (à télécharger, aucun envoi YouTube)'
     : 'Génération (brouillon à valider)';
   const acts = [];
   const modeFixed = ch.publish_schedule_mode === 'fixed' || (!ch.publish_schedule_mode && Array.isArray(ch.publish_times) && ch.publish_times.length > 0);
@@ -687,9 +690,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/api/videos') {
       const ch = await getActiveChannel();
       const rows = await dbSelect('videos', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=created_at.desc&limit=50');
-      // On joint le mode de publication de la chaîne (draft/review/auto) pour que l'UI adapte l'action de publication.
+      // On joint le mode de publication de la chaîne (draft/review/auto/local) pour que l'UI adapte l'action de
+      // publication, et la présence du fichier conservé pour afficher (ou non) les boutons de téléchargement.
       const pm = ch?.publish_mode || 'review';
-      return json(res, rows.map(v => ({ ...v, publish_mode: pm })));
+      return json(res, rows.map(v => {
+        const f = renderFiles(v.id);
+        return { ...v, publish_mode: pm, has_file: !!f.video, has_thumb_file: !!f.thumb };
+      }));
     }
     // Stats "aperçu" (batch) : vues/likes/commentaires en direct pour les vidéos en ligne de la chaîne active.
     if (req.method === 'GET' && path === '/api/videos/stats') {
@@ -861,6 +868,28 @@ const server = http.createServer(async (req, res) => {
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
     }
+    // Téléchargement du rendu conservé (mode « téléchargement seul ») : MP4 ou miniature.
+    // Streamé depuis le volume /data ; seuls les 5 derniers rendus existent encore.
+    if (req.method === 'GET' && (path === '/api/videos/download' || path === '/api/videos/download-thumbnail')) {
+      const id = q.get('id');
+      const [v] = id ? await dbSelect('videos', `?id=eq.${id}`).catch(() => []) : [];
+      if (!v) return json(res, { ok: false, error: 'vidéo introuvable' }, 404);
+      const wantThumb = path.endsWith('download-thumbnail');
+      const f = renderFiles(v.id);
+      const filePath = wantThumb ? f.thumb : f.video;
+      if (!filePath) return json(res, { ok: false, error: 'fichier non disponible (purgé : seuls les 5 derniers rendus sont conservés)' }, 404);
+      // Nom de fichier lisible, sans caractère qui casserait l'en-tête.
+      const base = (v.title || 'video').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'video';
+      const name = base + (wantThumb ? '.jpg' : '.mp4');
+      const size = statSync(filePath).size;
+      res.writeHead(200, {
+        'content-type': wantThumb ? 'image/jpeg' : 'video/mp4',
+        'content-length': String(size),
+        'content-disposition': `attachment; filename="${encodeURIComponent(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        'cache-control': 'no-store'
+      });
+      return createReadStream(filePath).pipe(res);
+    }
     // Mode "dépôt en privé" : la vidéo est publiée par l'utilisateur DIRECTEMENT sur YouTube Studio.
     // Ce endpoint ne touche PAS l'API YouTube — il marque simplement la vidéo comme publiée côté outil (suivi + stats).
     if (req.method === 'POST' && path === '/api/videos/mark-published') {
@@ -942,6 +971,7 @@ const server = http.createServer(async (req, res) => {
           const vch = v.channel_id ? await getChannel(v.channel_id) : await getActiveChannel();
           await deleteVideo(v.youtube_video_id, channelCreds(vch || {}).youtube).catch(() => {});
         }
+        deleteRender(b.id); // libère le rendu conservé sur /data, s'il existe
         await dbDelete('videos', `id=eq.${b.id}`);
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
@@ -1077,7 +1107,7 @@ const server = http.createServer(async (req, res) => {
         patch.discord_notifs = clean;
       }
       if (b.daily_report_hour != null) patch.daily_report_hour = Math.max(0, Math.min(23, Number(b.daily_report_hour) || 8));
-      if (['auto', 'review', 'draft'].includes(b.publish_mode)) patch.publish_mode = b.publish_mode;
+      if (['auto', 'review', 'draft', 'local'].includes(b.publish_mode)) patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       // À l'activation de la génération auto (transition off -> on), active aussi la MàJ quotidienne des stats
       // par défaut si elle ne l'est pas déjà (sauf demande explicite contraire dans la même sauvegarde).

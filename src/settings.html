@@ -95,11 +95,13 @@
     <div class="field" style="margin:0">
       <select id="f-publish_mode" style="width:100%">
         <option value="draft">Dépôt en privé — tu publies toi-même sur YouTube (meilleur reach)</option>
+        <option value="local">Téléchargement seul — aucun envoi YouTube, tu uploades tout toi-même</option>
         <option value="auto">Publication directe — public tout de suite, sans validation</option>
         <option value="review">Relecture — non répertorié, tu valides dans l'outil avant publication</option>
       </select>
       <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">
         <b>Dépôt en privé</b> : la vidéo est déposée sur la chaîne en <b>privé</b> et <b>rien n'est publié automatiquement</b>. Tu la publies <b>toi-même depuis YouTube Studio</b> quand tu veux. C'est la publication manuelle qui donne le plus de vues (l'algo distribue mal les vidéos passées en public par l'API).<br>
+        <b>Téléchargement seul</b> : l'outil <b>n'envoie rien sur YouTube</b>. Il génère la vidéo et te laisse <b>télécharger le MP4 + la miniature</b> depuis l'onglet Vidéos, pour tout uploader toi-même. Contrôle total. ⚠️ Seuls les <b>5 derniers rendus</b> sont conservés sur le serveur (espace disque limité).<br>
         <b>Publication directe</b> : la vidéo est mise <b>directement en public</b> via l'API, sans validation. Idéal pour une chaîne 100 % automatique — mais reach souvent plus faible.<br>
         <b>Relecture</b> : la vidéo arrive en <b>non répertorié</b> (accessible par lien), tu la relis puis cliques « Valider &amp; publier » dans l'outil.
       </div>
