@@ -210,8 +210,9 @@ function renderSettings() {
      <div style="font-size:12px;color:var(--color-mut);margin:5px 0 4px">On analyse ce site pour bâtir la stratégie SEO par défaut (reach YouTube × produit).</div>
      <label class="fld">Publication</label>
      <select id="i-pub">
-       <option value="review">Relecture — non répertorié, je valide avant publication</option>
+       <option value="draft">Dépôt en privé — je publie moi-même sur YouTube (meilleur reach)</option>
        <option value="auto">Publication directe — public tout de suite, sans validation</option>
+       <option value="review">Relecture — non répertorié, je valide dans l'outil</option>
      </select>
      <label class="fld" style="display:flex;align-items:center;gap:9px;margin-top:14px;text-transform:none;font-size:14px;color:var(--color-ink)"><input type="checkbox" id="i-cron" style="width:16px;height:16px"> Activer la génération automatique quotidienne (CRON)</label>
      <div class="actions"><button class="btn-link" id="b-skip">Passer</button><div class="spacer"></div><button class="btn-primary btn" id="b-next">Enregistrer →</button></div>`;

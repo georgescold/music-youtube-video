@@ -284,12 +284,14 @@
     </div>
     <div class="field"><label>Mode de publication</label>
       <select id="f-publish_mode" style="width:100%">
-        <option value="review">Relecture — non répertorié, tu valides avant publication</option>
+        <option value="draft">Dépôt en privé — tu publies toi-même sur YouTube (meilleur reach)</option>
         <option value="auto">Publication directe — public tout de suite, sans validation</option>
+        <option value="review">Relecture — non répertorié, tu valides dans l'outil avant publication</option>
       </select>
       <div style="font-size:11.5px;color:var(--color-mut2);margin-top:5px">
-        <b>Relecture</b> : la vidéo arrive en <b>non répertorié</b> (accessible par lien), tu la relis puis cliques « Valider &amp; publier ».<br>
-        <b>Publication directe</b> : la vidéo est mise <b>directement en public</b>, sans passer par le non-répertorié ni par la validation. Idéal pour une chaîne 100 % automatique.
+        <b>Dépôt en privé</b> : la vidéo est déposée sur la chaîne en <b>privé</b> et <b>rien n'est publié automatiquement</b>. Tu la publies <b>toi-même depuis YouTube Studio</b> quand tu veux. C'est la publication manuelle qui donne le plus de vues (l'algo distribue mal les vidéos passées en public par l'API).<br>
+        <b>Publication directe</b> : la vidéo est mise <b>directement en public</b> via l'API, sans validation. Idéal pour une chaîne 100 % automatique — mais reach souvent plus faible.<br>
+        <b>Relecture</b> : la vidéo arrive en <b>non répertorié</b> (accessible par lien), tu la relis puis cliques « Valider &amp; publier » dans l'outil.
       </div>
     </div>
     <div class="card-head" style="margin-top:8px">

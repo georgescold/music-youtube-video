@@ -247,15 +247,20 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     }))).catch(e => logStep('tracks', 'warn', e.message));
 
     // 6. Upload YouTube — dernier point d'annulation (après, la vidéo est en ligne).
-    // Mode "auto" -> publiée DIRECTEMENT en public (pas de non-répertorié) ; mode "validation" -> non-répertorié à relire.
-    const autoPublish = channel?.publish_mode === 'auto';
+    // Mode "auto"   -> publiée DIRECTEMENT en public (pas de non-répertorié).
+    // Mode "draft"  -> déposée en PRIVÉ ; tu la publies toi-même depuis YouTube Studio (meilleur reach, l'API ne publie rien).
+    // Mode "review" -> non-répertorié, à relire puis valider dans l'outil.
+    const mode = channel?.publish_mode || 'review';
+    const autoPublish = mode === 'auto';
+    const isDraft = mode === 'draft';
+    const uploadPrivacy = autoPublish ? 'public' : (isDraft ? 'private' : 'unlisted');
     ck();
     if (!dryRun) {
       await setStatus('uploading');
       await logStep('upload', 'start');
       const uploaded = await uploadVideo({
         filePath: outPath, title: meta.title, description: meta.description,
-        tags: meta.tags, privacyStatus: autoPublish ? 'public' : 'unlisted', creds: ytCreds
+        tags: meta.tags, privacyStatus: uploadPrivacy, creds: ytCreds
       });
       youtubeId = uploaded.id;
       youtubeUrl = 'https://www.youtube.com/watch?v=' + youtubeId;
@@ -288,12 +293,14 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     }
 
     // Mode "auto" : la vidéo est déjà en public (uploadée ainsi). On force en sécurité + on marque publiée.
-    // Mode "validation" : reste en non-répertorié, en attente de relecture.
+    // Mode "draft"/"review" : reste hors public (privé / non-répertorié), en attente d'action.
     let finalStatus = 'pending_review';
     if (!dryRun && youtubeId && autoPublish) {
       finalStatus = 'published';
       try { await setPrivacyStatus(youtubeId, 'public', ytCreds); } catch (e) { await logStep('publish', 'warn', e.message); }
       await logStep('publish', 'ok', 'publiée directement en public (sans validation)');
+    } else if (!dryRun && youtubeId && isDraft) {
+      await logStep('publish', 'skip', 'déposée en privé — à publier toi-même depuis YouTube Studio');
     }
 
     await setStatus(finalStatus, {
@@ -312,7 +319,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
         color: COLORS.ok, url: youtubeUrl || undefined, image: thumbnailUrl || undefined
       });
     } else if (finalStatus === 'pending_review') {
-      notifyChannel(channel, 'video_review', {
+      notifyChannel(channel, 'video_review', isDraft ? {
+        title: '📥 Vidéo déposée (privée)', description: `**${meta.title}**\nPublie-la toi-même depuis YouTube Studio pour un meilleur reach : ${youtubeUrl || ''}`,
+        color: COLORS.info, url: youtubeUrl || undefined, image: thumbnailUrl || undefined
+      } : {
         title: '📝 Vidéo à valider', description: `**${meta.title}**\nRelis puis publie : ${youtubeUrl || ''}`,
         color: COLORS.info, url: youtubeUrl || undefined, image: thumbnailUrl || undefined
       });

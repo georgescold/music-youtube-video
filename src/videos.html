@@ -374,8 +374,11 @@ async function load() {
     div.className = 'vid';
     const open = v.id === openId;
     const canReview = v.status === 'pending_review';
+    const isDraft = v.publish_mode === 'draft';
     const embed = v.youtube_video_id ? `<iframe class="preview" src="https://www.youtube.com/embed/${v.youtube_video_id}" allowfullscreen></iframe>` : '';
-    const ytLink = v.youtube_url ? `<a class="yt-link" href="${v.youtube_url}" target="_blank">Ouvrir sur YouTube (non répertorié) ↗</a>` : '';
+    const privacyLabel = v.status === 'published' ? '' : (isDraft ? ' (privé)' : ' (non répertorié)');
+    const studioLink = v.youtube_video_id ? `https://studio.youtube.com/video/${v.youtube_video_id}/edit` : null;
+    const ytLink = v.youtube_url ? `<a class="yt-link" href="${v.youtube_url}" target="_blank">Ouvrir sur YouTube${privacyLabel} ↗</a>` : '';
     div.innerHTML = `
       <div class="vid-head" data-id="${v.id}">
         <div style="flex:1;min-width:0">
@@ -391,6 +394,7 @@ async function load() {
         ${v.status === 'failed' ? '<div class="field err">Erreur : ' + (v.error || 'inconnue') + '</div>' : ''}
         ${embed}
         ${ytLink ? '<div style="margin-bottom:14px">' + ytLink + '</div>' : ''}
+        ${canReview && isDraft ? '<div class="vid-note" style="margin-bottom:14px">📥 Déposée en <b>privé</b> sur ta chaîne. Publie-la toi-même depuis ' + (studioLink ? '<a href="' + studioLink + '" target="_blank">YouTube Studio ↗</a>' : 'YouTube Studio') + ' (meilleur reach), puis clique « Marquer comme publiée ».</div>' : ''}
         <div class="vdetail" id="detail_${v.id}">${open ? '<div class="vd-load">Chargement des statistiques…</div>' : ''}</div>
         ${v.youtube_video_id ? `<div class="thumb-editor" id="thumb_${v.id}">
           <label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--color-mut);margin-bottom:6px">Miniature — glisse le texte pour le déplacer</label>
@@ -410,7 +414,8 @@ async function load() {
         <div class="field"><label>Description</label><textarea id="d_${v.id}">${v.description || ''}</textarea></div>
         <div class="actions">
           <button class="btn-sec save">Enregistrer les modifs</button>
-          ${canReview ? '<button class="btn-primary approve">Valider &amp; publier</button>' : ''}
+          ${canReview && isDraft ? '<button class="btn-primary mark-pub">Marquer comme publiée</button>' : ''}
+          ${canReview && !isDraft ? '<button class="btn-primary approve">Valider &amp; publier</button>' : ''}
           ${canReview ? '<button class="btn-sec reject">Rejeter</button>' : ''}
           <div class="spacer"></div>
           <button class="btn-sec btn-danger del">Supprimer</button>
@@ -437,6 +442,7 @@ async function load() {
     };
     if (q('.save')) q('.save').onclick = (e) => save(v.id, e.target);
     if (q('.approve')) q('.approve').onclick = () => act('/api/videos/approve', v.id, 'Publier cette vidéo sur YouTube (passage en public) ?');
+    if (q('.mark-pub')) q('.mark-pub').onclick = () => act('/api/videos/mark-published', v.id, 'Marquer cette vidéo comme publiée ?\n\n(À faire une fois que tu l\'as publiée toi-même depuis YouTube Studio. Ça ne touche pas YouTube, ça met juste à jour le suivi ici.)');
     if (q('.reject')) q('.reject').onclick = () => act('/api/videos/reject', v.id);
     if (q('.del')) q('.del').onclick = () => act('/api/videos/delete', v.id, 'Supprimer cette vidéo (et la retirer de YouTube si elle y est) ?');
     list.appendChild(div);
@@ -557,7 +563,7 @@ async function loadHome() {
     const live = c.cron_enabled
       ? '<span class="live on"><span class="dot"></span>Live — génération auto</span>'
       : '<a class="live off" href="/settings" title="Configurer la publication automatique"><span class="dot"></span>Auto désactivée ⚙</a>';
-    const mode = c.publish_mode === 'auto' ? 'publication auto (public)' : 'brouillons à valider';
+    const mode = c.publish_mode === 'auto' ? 'publication auto (public)' : (c.publish_mode === 'draft' ? 'dépôt en privé (à publier toi-même)' : 'brouillons à valider');
     const sched = c.schedule_mode === 'fixed' ? 'heures précises' : 'mode auto (warm-up)';
     const up = d.upcoming || { actions: [], next_label: null };
     const sub = c.cron_enabled

@@ -97,7 +97,9 @@ async function buildUpcoming(ch, now = new Date()) {
   const todayKey = now.toISOString().slice(0, 10);
   const tomorrowKey = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
   const fmt = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
-  const verb = ch.publish_mode === 'auto' ? 'Génération + publication (public)' : 'Génération (brouillon à valider)';
+  const verb = ch.publish_mode === 'auto' ? 'Génération + publication (public)'
+    : ch.publish_mode === 'draft' ? 'Génération + dépôt en privé (à publier toi-même)'
+    : 'Génération (brouillon à valider)';
   const acts = [];
   const modeFixed = ch.publish_schedule_mode === 'fixed' || (!ch.publish_schedule_mode && Array.isArray(ch.publish_times) && ch.publish_times.length > 0);
   if (modeFixed) {
@@ -685,7 +687,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/api/videos') {
       const ch = await getActiveChannel();
       const rows = await dbSelect('videos', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=created_at.desc&limit=50');
-      return json(res, rows);
+      // On joint le mode de publication de la chaîne (draft/review/auto) pour que l'UI adapte l'action de publication.
+      const pm = ch?.publish_mode || 'review';
+      return json(res, rows.map(v => ({ ...v, publish_mode: pm })));
     }
     // Stats "aperçu" (batch) : vues/likes/commentaires en direct pour les vidéos en ligne de la chaîne active.
     if (req.method === 'GET' && path === '/api/videos/stats') {
@@ -856,6 +860,15 @@ const server = http.createServer(async (req, res) => {
         await dbPatch('videos', `id=eq.${b.id}`, { status: 'published', published_at: new Date().toISOString() });
         return json(res, { ok: true });
       } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+    }
+    // Mode "dépôt en privé" : la vidéo est publiée par l'utilisateur DIRECTEMENT sur YouTube Studio.
+    // Ce endpoint ne touche PAS l'API YouTube — il marque simplement la vidéo comme publiée côté outil (suivi + stats).
+    if (req.method === 'POST' && path === '/api/videos/mark-published') {
+      const b = await readJsonBody(req);
+      const [v] = await dbSelect('videos', `?id=eq.${b.id}`);
+      if (!v) return json(res, { ok: false, error: 'vidéo introuvable' });
+      await dbPatch('videos', `id=eq.${b.id}`, { status: 'published', published_at: new Date().toISOString() });
+      return json(res, { ok: true });
     }
     // Données pour l'éditeur de miniature (image de fond + réglages courants).
     if (req.method === 'GET' && path === '/api/videos/thumbnail') {
@@ -1064,7 +1077,7 @@ const server = http.createServer(async (req, res) => {
         patch.discord_notifs = clean;
       }
       if (b.daily_report_hour != null) patch.daily_report_hour = Math.max(0, Math.min(23, Number(b.daily_report_hour) || 8));
-      if (b.publish_mode === 'auto' || b.publish_mode === 'review') patch.publish_mode = b.publish_mode;
+      if (['auto', 'review', 'draft'].includes(b.publish_mode)) patch.publish_mode = b.publish_mode;
       if (typeof b.cron_enabled === 'boolean') patch.cron_enabled = b.cron_enabled;
       // À l'activation de la génération auto (transition off -> on), active aussi la MàJ quotidienne des stats
       // par défaut si elle ne l'est pas déjà (sauf demande explicite contraire dans la même sauvegarde).
