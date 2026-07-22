@@ -127,6 +127,10 @@
   .preview { aspect-ratio: 16/9; width: 100%; border: 0; border-radius: 8px; background: var(--color-soft2); margin-bottom: 14px; }
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--color-mut); margin-bottom: 5px; }
+  /* Petit bouton « Copier » inline dans le label — sert à recopier les métadonnées pour un upload manuel. */
+  .btn-copy { margin-left: 8px; font-family: var(--font-sans); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; padding: 2px 9px; border-radius: 100px; cursor: pointer; background: var(--color-paper); border: 1px solid var(--color-rule2); color: var(--color-mut); }
+  .btn-copy:hover { color: var(--color-ink); }
+  .tags-box { width: 100%; min-height: 54px; resize: vertical; }
   .field input, .field textarea { width: 100%; padding: 9px 11px; background: var(--color-paper); border: 1px solid var(--color-rule2); border-radius: 8px; font-size: 13px; color: var(--color-ink); font-family: var(--font-sans); resize: vertical; }
   .field textarea { min-height: 150px; line-height: 1.55; }
   .field input:focus, .field textarea:focus { outline: none; border-color: var(--color-ink); }
@@ -378,6 +382,8 @@ async function load() {
     const isLocal = v.publish_mode === 'local';
     // Dépôt privé et téléchargement seul : c'est l'utilisateur qui publie sur YouTube, pas l'API.
     const manualPublish = isDraft || isLocal;
+    // Tags SEO générés : YouTube les attend séparés par des virgules dans son champ « Tags ».
+    const tagsStr = (Array.isArray(v.tags) ? v.tags : []).join(', ');
     const embed = v.youtube_video_id ? `<iframe class="preview" src="https://www.youtube.com/embed/${v.youtube_video_id}" allowfullscreen></iframe>` : '';
     const privacyLabel = v.status === 'published' ? '' : (isDraft ? ' (privé)' : ' (non répertorié)');
     const studioLink = v.youtube_video_id ? `https://studio.youtube.com/video/${v.youtube_video_id}/edit` : null;
@@ -418,8 +424,12 @@ async function load() {
             <span class="thumb-msg"></span>
           </div>
         </div>` : ''}
-        <div class="field"><label>Titre</label><input id="t_${v.id}" value="${(v.title || '').replace(/"/g, '&quot;')}"></div>
-        <div class="field"><label>Description</label><textarea id="d_${v.id}">${v.description || ''}</textarea></div>
+        <div class="field"><label>Titre<button class="btn-copy copy-title" type="button">Copier</button></label><input id="t_${v.id}" value="${(v.title || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field"><label>Description<button class="btn-copy copy-desc" type="button">Copier</button></label><textarea id="d_${v.id}">${v.description || ''}</textarea></div>
+        ${tagsStr ? `<div class="field"><label>Tags YouTube<button class="btn-copy copy-tags" type="button">Copier</button></label>
+          <textarea class="tags-box" readonly>${tagsStr.replace(/</g, '&lt;')}</textarea>
+          <p class="opt-hint">Mots-clés SEO générés. Colle-les tels quels dans le champ « Tags » de YouTube (séparés par des virgules).</p>
+        </div>` : ''}
         <div class="actions">
           <button class="btn-sec save">Enregistrer les modifs</button>
           ${canReview && manualPublish ? '<button class="btn-primary mark-pub">Marquer comme publiée</button>' : ''}
@@ -448,6 +458,28 @@ async function load() {
         load();
       } catch (err) { alert('Erreur réseau'); btn.disabled = false; btn.textContent = '🔁 Reprendre'; }
     };
+    // Copie des métadonnées (upload manuel) : presse-papiers moderne, avec repli execCommand.
+    const wireCopy = (sel, getText) => {
+      const b = q(sel);
+      if (!b) return;
+      b.onclick = async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const txt = getText() || '';
+        try { await navigator.clipboard.writeText(txt); }
+        catch (err) {
+          const ta = document.createElement('textarea');
+          ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); } catch (e2) {}
+          ta.remove();
+        }
+        const orig = b.textContent; b.textContent = 'Copié ✓';
+        setTimeout(() => { b.textContent = orig; }, 1400);
+      };
+    };
+    wireCopy('.copy-title', () => (document.getElementById('t_' + v.id) || {}).value);
+    wireCopy('.copy-desc', () => (document.getElementById('d_' + v.id) || {}).value);
+    wireCopy('.copy-tags', () => tagsStr);
     if (q('.save')) q('.save').onclick = (e) => save(v.id, e.target);
     if (q('.approve')) q('.approve').onclick = () => act('/api/videos/approve', v.id, 'Publier cette vidéo sur YouTube (passage en public) ?');
     if (q('.mark-pub')) q('.mark-pub').onclick = () => act('/api/videos/mark-published', v.id, 'Marquer cette vidéo comme publiée ?\n\n(À faire une fois que tu l\'as ' + (isLocal ? 'uploadée toi-même sur YouTube' : 'publiée toi-même depuis YouTube Studio') + '. Ça ne touche pas YouTube, ça met juste à jour le suivi ici.)');
