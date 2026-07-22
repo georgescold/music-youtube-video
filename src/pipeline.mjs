@@ -11,7 +11,7 @@ import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus, setThumbnail, deleteVideo } from './services/youtube.mjs';
 import { getActiveChannel, getChannel, updateChannel, channelCreds } from './services/channels.mjs';
-import { analyzeImage } from './services/vision.mjs';
+import { analyzeImage, analyzeTitle } from './services/vision.mjs';
 import { chooseEmotionIndex } from './steps/coach.mjs';
 import { sendDiscord, notifyChannel, COLORS } from './services/notify.mjs';
 import { createEpidemicClient, isEpidemicAuthError, EPIDEMIC_AUTH_MESSAGE } from './services/epidemicMcp.mjs';
@@ -124,20 +124,50 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     const primaryImagePath = backgrounds.find(b => !b.isVideo)?.path || null;
     ck();
 
-    // Émotion : dérivée de l'IMAGE de fond (combo parfait image ↔ titre ↔ musique), sinon palette dérivée.
+    // Image qui porte l'INTENTION de l'utilisateur : le fond imposé (déjà en tête des backgrounds),
+    // sinon la miniature imposée — qu'on récupère dès maintenant pour qu'elle puisse piloter l'émotion.
+    const forcedTitle = String(titleOverride || '').trim();
+    let imposedThumbPath = null; // réutilisé plus bas pour fabriquer la miniature (évite un 2e téléchargement)
+    let intentImagePath = forcedImg ? primaryImagePath : null;
+    if (!intentImagePath && thumbnailAssetId) {
+      const tA = assets.find(a => a.id === thumbnailAssetId && a.kind === 'background' && (a.mime_type || '').startsWith('image'));
+      if (tA) {
+        try { imposedThumbPath = (await fetchAssetFile(tA, workDir)).path; intentImagePath = imposedThumbPath; }
+        catch (e) { await logStep('thumbnail', 'warn', 'image miniature illisible : ' + e.message); }
+      }
+    }
+
+    // Émotion — par ordre de priorité :
+    //  1. Ce que l'utilisateur a IMPOSÉ pour cette vidéo (titre et/ou image) : son intention prime toujours,
+    //     c'est elle qui doit piloter la musique (combo titre ↔ image ↔ musique).
+    //  2. Sinon, en génération automatique, l'image de fond si l'option est activée sur la chaîne.
+    //  3. Sinon, la palette de la chaîne (rotation + coach).
     let emotion = null;
-    if (primaryImagePath && channel?.emotion_from_image === true) {
+    const fromVision = async (imgPath, titleHint, label) => {
+      const creds = { token: channelCreds(channel).claudeToken, model: channel?.claude_model || 'sonnet' };
+      const va = imgPath
+        ? await analyzeImage(imgPath, { ...creds, titleHint })
+        : await analyzeTitle(titleHint, creds);
+      if (!va?.emotion) return null;
+      await logStep('vision', 'ok', label + ' : ' + String(va.emotion).trim());
+      return {
+        name: String(va.emotion).trim(),
+        description: String(va.situation || '').trim(), // situation émotionnelle ressentie (jamais la scène visuelle)
+        keywords: Array.isArray(va.mots_cles_musique) ? va.mots_cles_musique : []
+      };
+    };
+    if (forcedTitle || intentImagePath) {
+      const src = forcedTitle && intentImagePath ? 'titre imposé + image imposée'
+        : forcedTitle ? 'titre imposé' : 'image imposée';
+      try {
+        await logStep('vision', 'start', 'émotion déduite de ton choix (' + src + ')');
+        emotion = await fromVision(intentImagePath, forcedTitle, 'émotion (' + src + ')');
+      } catch (e) { await logStep('vision', 'warn', e.message); }
+    }
+    if (!emotion && primaryImagePath && channel?.emotion_from_image === true) {
       try {
         await logStep('vision', 'start', 'analyse de l\'image de fond');
-        const va = await analyzeImage(primaryImagePath, { token: channelCreds(channel).claudeToken, model: channel?.claude_model || 'sonnet' });
-        if (va?.emotion) {
-          emotion = {
-            name: String(va.emotion).trim(),
-            description: String(va.situation || '').trim(), // situation émotionnelle ressentie (jamais la scène visuelle)
-            keywords: Array.isArray(va.mots_cles_musique) ? va.mots_cles_musique : []
-          };
-          await logStep('vision', 'ok', 'émotion de l\'image : ' + emotion.name);
-        }
+        emotion = await fromVision(primaryImagePath, '', 'émotion de l\'image');
       } catch (e) { await logStep('vision', 'warn', e.message); }
     }
     if (!emotion && palette.length) { // repli : palette dérivée (rotation + coach)
@@ -281,7 +311,10 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     // sinon la 1re image de fond de la vidéo.
     let thumbnailUrl = null;
     let thumbImagePath = backgrounds.find(b => !b.isVideo)?.path || null;
-    if (thumbnailAssetId) {
+    if (imposedThumbPath) {
+      thumbImagePath = imposedThumbPath; // déjà téléchargée plus haut (elle a servi à déduire l'émotion)
+      await logStep('thumbnail', 'ok', 'miniature imposée');
+    } else if (thumbnailAssetId) {
       const tAsset = assets.find(a => a.id === thumbnailAssetId && a.kind === 'background' && (a.mime_type || '').startsWith('image'));
       if (tAsset) { try { thumbImagePath = (await fetchAssetFile(tAsset, workDir)).path; await logStep('thumbnail', 'ok', 'miniature imposée : ' + (tAsset.filename || tAsset.id)); } catch (e) { await logStep('thumbnail', 'warn', 'image miniature illisible : ' + e.message); } }
     }
