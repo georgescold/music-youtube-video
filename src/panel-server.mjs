@@ -1144,6 +1144,13 @@ const server = http.createServer(async (req, res) => {
       const credWarning = skippedCreds.length ? ('Valeur(s) ignorée(s) car format invalide (souvent l\'autofill du navigateur) : ' + skippedCreds.map(f => credLabels[f]).join(', ') + '. L\'identifiant existant a été conservé.') : null;
       return json(res, { ok: true, channel: channelPublicView(updated), resumed, credWarning });
     }
+    // Désactive/retire le webhook Discord de la chaîne active (plus aucune notification envoyée).
+    if (req.method === 'POST' && path === '/api/settings/discord/clear') {
+      const ch = await getActiveChannel();
+      if (!ch) return json(res, { ok: false, error: 'aucune chaîne active' });
+      await dbPatch('channels', `id=eq.${ch.id}`, { discord_webhook: null });
+      return json(res, { ok: true });
+    }
     if (req.method === 'POST' && path === '/api/test/discord') {
       const ch = await getActiveChannel();
       if (!ch?.discord_webhook) return json(res, { ok: false, detail: 'aucun webhook configuré' });
