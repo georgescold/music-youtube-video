@@ -25,6 +25,7 @@ import { fetchBlogArticles } from './services/webAnalyze.mjs';
 import { computeCadence, analyzeAndDecide, collectStats } from './steps/coach.mjs';
 import { renderFiles, deleteRender } from './services/renders.mjs';
 import { createReadStream, statSync } from 'node:fs';
+import { Readable } from 'node:stream';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -547,6 +548,27 @@ const server = http.createServer(async (req, res) => {
       const rows = await dbSelect('assets', (ch ? `?channel_id=eq.${ch.id}&` : '?') + 'order=uploaded_at.desc');
       const withUrls = await Promise.all(rows.map(async r => ({ ...r, url: await storageSign('assets', r.storage_path).catch(() => null) })));
       return json(res, withUrls);
+    }
+    // Re-téléchargement d'un asset déjà envoyé. On relaie le fichier depuis le stockage plutôt que de
+    // renvoyer l'URL signée : le navigateur ignore l'attribut `download` en cross-origin (il ouvrirait
+    // l'image dans un onglet). Ici on force la pièce jointe, avec le nom de fichier d'origine.
+    if (req.method === 'GET' && path === '/api/assets/download') {
+      const id = q.get('id');
+      const [a] = id ? await dbSelect('assets', `?id=eq.${id}`).catch(() => []) : [];
+      if (!a) return json(res, { ok: false, error: 'fichier introuvable' }, 404);
+      const signed = await storageSign('assets', a.storage_path).catch(() => null);
+      if (!signed) return json(res, { ok: false, error: 'fichier indisponible dans le stockage' }, 404);
+      const up = await fetch(signed).catch(() => null);
+      if (!up || !up.ok) return json(res, { ok: false, error: 'téléchargement impossible depuis le stockage' }, 502);
+      const name = String(a.filename || 'fichier').replace(/[\\/:*?"<>|\r\n]+/g, '').trim() || 'fichier';
+      const len = up.headers.get('content-length');
+      res.writeHead(200, {
+        'content-type': a.mime_type || up.headers.get('content-type') || 'application/octet-stream',
+        ...(len ? { 'content-length': len } : {}),
+        'content-disposition': `attachment; filename="${encodeURIComponent(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        'cache-control': 'no-store'
+      });
+      return Readable.fromWeb(up.body).pipe(res);
     }
     if (req.method === 'POST' && path === '/api/assets/upload') {
       const kind = q.get('kind') || 'other';

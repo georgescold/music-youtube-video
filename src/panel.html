@@ -303,7 +303,10 @@ function renderList() {
           </select>` : ''}
         </div>` : ''}
         <div class="row">
-          <a href="${a.url || '#'}" target="_blank">Aperçu ↗</a>
+          <span style="display:flex;gap:10px">
+            <a href="${a.url || '#'}" target="_blank">Aperçu ↗</a>
+            <a href="/api/assets/download?id=${a.id}" title="Retélécharger ce fichier sur ton ordinateur">⬇ Télécharger</a>
+          </span>
           <span style="display:flex;gap:6px">
             ${isAd ? '<button class="pos-btn">Position</button>' : ''}
             <button class="tog-btn">${isPaused ? 'Activer' : 'Pause'}</button>
