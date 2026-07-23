@@ -6,7 +6,8 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dbSelect, dbInsert, dbPatch, dbDelete, storageSign } from './services/supabase.mjs';
 import { curatePlaylist, durationSec } from './steps/curate.mjs';
 import { downloadAll } from './steps/download.mjs';
-import { concatAudio, renderVideo, buildTracklist, probeDuration, generateDefaultBackground, renderThumbnail, getRegionLuminance } from './services/ffmpeg.mjs';
+import { concatAudio, renderVideo, buildTracklist, probeDuration, probeSize, generateDefaultBackground, renderThumbnail, getRegionLuminance } from './services/ffmpeg.mjs';
+import { focalFor } from './services/focal.mjs';
 import { generateMetadata } from './steps/metadata.mjs';
 import { selectBackgrounds } from './steps/selectBackgrounds.mjs';
 import { uploadVideo, setPrivacyStatus, setThumbnail, deleteVideo } from './services/youtube.mjs';
@@ -25,7 +26,8 @@ async function fetchAssetFile(asset, dir) {
   const ext = (asset.filename.split('.').pop() || 'bin').toLowerCase();
   const path = join(dir, 'asset-' + asset.id + '.' + ext);
   writeFileSync(path, buf);
-  return { path, isVideo: (asset.mime_type || '').startsWith('video') };
+  // assetId : clé de cache du point focal (une même image de fond resservira sur d'autres vidéos).
+  return { path, isVideo: (asset.mime_type || '').startsWith('video'), assetId: asset.id };
 }
 
 // Résout les variantes de contraste : deux assets pub partageant le même `variant_group` sont la MÊME pub,
@@ -259,6 +261,24 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     }
     const outPath = join(workDir, 'video.mp4');
     ck();
+    // Cadrage : une image portrait recadrée en 16:9 perd le haut et le bas. On repère le sujet (visages)
+    // pour caler le recadrage dessus. Analysé une seule fois par image puis mis en cache, et seulement
+    // quand le rognage est significatif (une image déjà ~16:9 reste centrée, gratuitement).
+    for (const b of backgrounds) {
+      if (b.isVideo) continue;
+      ck();
+      try {
+        const size = probeSize(b.path);
+        const r = await focalFor({
+          key: b.assetId, imgPath: b.path, srcW: size?.width, srcH: size?.height,
+          outW: 1920, outH: 1080,
+          token: channelCreds(channel).claudeToken, model: channel?.claude_model || 'sonnet'
+        });
+        b.focal = r.focal;
+        await logStep('framing', 'ok', r.reason);
+      } catch (e) { await logStep('framing', 'warn', 'cadrage centré par défaut : ' + e.message); }
+    }
+    ck();
     await renderVideo({
       backgrounds, ads, constantAds, audioPath, outPath, log, controller,
       adFrequencyMin: channel?.ad_frequency_min ?? 10,
@@ -310,13 +330,30 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
     // Image de la miniature : celle CHOISIE par l'utilisateur (thumbnailAssetId, indépendante du fond) si fournie,
     // sinon la 1re image de fond de la vidéo.
     let thumbnailUrl = null;
-    let thumbImagePath = backgrounds.find(b => !b.isVideo)?.path || null;
+    const firstBg = backgrounds.find(b => !b.isVideo) || null;
+    let thumbImagePath = firstBg?.path || null;
+    let thumbAssetId = firstBg?.assetId || null;
+    let thumbFocal = firstBg?.focal || null; // déjà calculé pour le fond : on le réutilise tel quel
     if (imposedThumbPath) {
       thumbImagePath = imposedThumbPath; // déjà téléchargée plus haut (elle a servi à déduire l'émotion)
+      thumbAssetId = thumbnailAssetId; thumbFocal = null;
       await logStep('thumbnail', 'ok', 'miniature imposée');
     } else if (thumbnailAssetId) {
       const tAsset = assets.find(a => a.id === thumbnailAssetId && a.kind === 'background' && (a.mime_type || '').startsWith('image'));
-      if (tAsset) { try { thumbImagePath = (await fetchAssetFile(tAsset, workDir)).path; await logStep('thumbnail', 'ok', 'miniature imposée : ' + (tAsset.filename || tAsset.id)); } catch (e) { await logStep('thumbnail', 'warn', 'image miniature illisible : ' + e.message); } }
+      if (tAsset) { try { thumbImagePath = (await fetchAssetFile(tAsset, workDir)).path; thumbAssetId = tAsset.id; thumbFocal = null; await logStep('thumbnail', 'ok', 'miniature imposée : ' + (tAsset.filename || tAsset.id)); } catch (e) { await logStep('thumbnail', 'warn', 'image miniature illisible : ' + e.message); } }
+    }
+    // Point focal de la miniature : recalculé seulement si l'image n'est pas celle du fond (sinon déjà connu).
+    if (thumbImagePath && !thumbFocal) {
+      try {
+        const size = probeSize(thumbImagePath);
+        const r = await focalFor({
+          key: thumbAssetId, imgPath: thumbImagePath, srcW: size?.width, srcH: size?.height,
+          outW: 1280, outH: 720,
+          token: channelCreds(channel).claudeToken, model: channel?.claude_model || 'sonnet'
+        });
+        thumbFocal = r.focal;
+        await logStep('framing', 'ok', 'miniature — ' + r.reason);
+      } catch (e) { await logStep('framing', 'warn', 'miniature cadrée au centre : ' + e.message); }
     }
     // En mode "local" il n'y a pas d'id YouTube : on génère quand même la miniature, pour la télécharger.
     let localThumbPath = null;
@@ -326,7 +363,7 @@ export async function runPipeline({ targetSec, dryRun = false, dayIndex = 0, tit
         renderThumbnail({
           imagePath: thumbImagePath, title: meta.title, outPath: thumbPath, workDir, log,
           font: channel?.thumbnail_font || 'playfair',
-          withText: channel?.thumbnail_text !== false
+          withText: channel?.thumbnail_text !== false, focal: thumbFocal
         });
         localThumbPath = thumbPath;
         if (youtubeId) {

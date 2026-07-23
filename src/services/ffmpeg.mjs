@@ -22,6 +22,33 @@ export function probeDuration(path) {
   return parseFloat(out) || 0;
 }
 
+// Dimensions du flux vidéo/image. null si illisible (on retombe alors sur un recadrage centré).
+export function probeSize(path) {
+  try {
+    const out = execFileSync(FP, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', path]).toString().trim();
+    const [w, h] = out.split(/[x,]/).map(Number);
+    if (w > 0 && h > 0) return { width: w, height: h };
+  } catch {}
+  return null;
+}
+
+// Filtre « remplir le cadre » recadré sur un point focal (fractions 0..1 du sujet dans l'image source).
+// On calcule les dimensions et l'offset en JS plutôt qu'avec des expressions FFmpeg : pas de virgule à
+// échapper dans le filtergraph, et le résultat est vérifiable. Sans focal exploitable -> centrage (historique).
+export function fillCropFilter(srcPath, width, height, focal = null) {
+  const size = probeSize(srcPath);
+  if (!size) return `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1`;
+  const s = Math.max(width / size.width, height / size.height);
+  const sw = Math.max(width, Math.round(size.width * s));
+  const sh = Math.max(height, Math.round(size.height * s));
+  const frac = v => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.5));
+  const fx = frac(focal?.x), fy = frac(focal?.y);
+  // Fenêtre centrée sur le sujet, puis ramenée à l'intérieur de l'image agrandie.
+  const x = Math.round(Math.min(sw - width, Math.max(0, sw * fx - width / 2)));
+  const y = Math.round(Math.min(sh - height, Math.max(0, sh * fy - height / 2)));
+  return `scale=${sw}:${sh},crop=${width}:${height}:${x}:${y},setsar=1`;
+}
+
 // Luminance moyenne (0-255) d'une image, dans une RÉGION donnée (fractions 0..1, comme un placement de pub)
 // ou de l'image entière si omise. Sert au choix intelligent de variante de pub (contraste vs le fond).
 export function getRegionLuminance(imagePath, box) {
@@ -101,8 +128,8 @@ function wrapLines(text, maxChars) {
 
 // Génère une miniature 1280x720 depuis une image fournie.
 // withText=true -> écrit le titre centré (police au choix) ; withText=false -> image seule.
-export function renderThumbnail({ imagePath, title, text, outPath, workDir, font = 'playfair', withText = true, overlay = 0.22, posX = 0.5, posY = 0.5, log = () => {} }) {
-  const parts = ['scale=1280:720:force_original_aspect_ratio=increase', 'crop=1280:720'];
+export function renderThumbnail({ imagePath, title, text, outPath, workDir, font = 'playfair', withText = true, overlay = 0.22, posX = 0.5, posY = 0.5, focal = null, log = () => {} }) {
+  const parts = [fillCropFilter(imagePath, 1280, 720, focal)];
   let nLines = 0;
   if (withText) {
     const raw = (text != null ? String(text) : stripPlaylistTag(title)) || 'Playlist';
@@ -160,7 +187,7 @@ export async function renderVideo({ backgrounds = [], ads = [], constantAds = []
   const scaleCropFps = (src, out) => `[${src}]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${fps}[${out}]`;
 
   // ── Fond ──
-  const bgImages = backgrounds.filter(b => !b.isVideo).map(b => b.path);
+  const bgImages = backgrounds.filter(b => !b.isVideo);
   const bgVideo = backgrounds.find(b => b.isVideo);
   let bgLabel;
   if (bgImages.length) {
@@ -170,10 +197,11 @@ export async function renderVideo({ backgrounds = [], ads = [], constantAds = []
     const T = (D / bgImages.length).toFixed(3); // temps égal par image = équilibrage équitable
     const dir = dirname(outPath);
     const normPaths = [];
-    bgImages.forEach((p, i) => {
+    bgImages.forEach((b, i) => {
       if (controller?.cancelled) throw new Error('cancelled');
       const np = join(dir, `bgn_${i}.jpg`);
-      execFileSync(FF, ['-y', '-i', p, '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1`, '-q:v', '3', np], { stdio: 'ignore' });
+      // Recadrage calé sur le sujet (b.focal) : sans ça, une image portrait est centrée et perd les visages.
+      execFileSync(FF, ['-y', '-i', b.path, '-vf', fillCropFilter(b.path, width, height, b.focal), '-q:v', '3', np], { stdio: 'ignore' });
       normPaths.push(np);
     });
     const listPath = join(dir, 'bg_list.txt');

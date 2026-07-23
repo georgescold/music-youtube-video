@@ -24,6 +24,7 @@ import { generateSeoPlan } from './steps/seoPlan.mjs';
 import { fetchBlogArticles } from './services/webAnalyze.mjs';
 import { computeCadence, analyzeAndDecide, collectStats } from './steps/coach.mjs';
 import { renderFiles, deleteRender } from './services/renders.mjs';
+import { readFocal } from './services/focal.mjs';
 import { createReadStream, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 
@@ -965,7 +966,9 @@ const server = http.createServer(async (req, res) => {
         const font = ['playfair', 'inter', 'cormorant'].includes(b.font) ? b.font : (ch?.thumbnail_font || 'playfair');
         const text = String(b.text || '').slice(0, 200);
         const posX = Math.min(1, Math.max(0, Number(b.posX) || 0.5)), posY = Math.min(1, Math.max(0, Number(b.posY) || 0.5));
-        renderThumbnail({ imagePath: imgPath, text, outPath, workDir, font, withText: !!text.trim(), posX, posY });
+        // Même cadrage sur le sujet que le montage : le point focal a été mis en cache à la génération.
+        const focal = readFocal(img.id);
+        renderThumbnail({ imagePath: imgPath, text, outPath, workDir, font, withText: !!text.trim(), posX, posY, focal });
         await setThumbnail(v.youtube_video_id, outPath, channelCreds(ch || {}).youtube);
         await dbPatch('videos', `id=eq.${b.id}`, { thumbnail_config: { text, font, posX, posY } });
         return json(res, { ok: true });

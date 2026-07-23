@@ -56,6 +56,22 @@ export function analyzeImage(imgPath, { token, model = 'sonnet', titleHint = '' 
   return runClaudeJson(prompt, { token, model, allowRead: true });
 }
 
+// Point focal du sujet dans une image, en fractions [0..1] (0,0 = haut-gauche · 1,1 = bas-droite).
+// Sert à recadrer une image portrait en 16:9 sans décapiter le sujet. Renvoie le centre si la réponse est illisible.
+export async function analyzeFraming(imgPath, { token, model = 'sonnet' } = {}) {
+  const prompt = `Lis l'image située ici : ${imgPath}
+Repère le SUJET PRINCIPAL : s'il y a des personnes, le centre de leurs VISAGES ; sinon l'élément le plus important.
+Cette image va être recadrée en 16:9 et le sujet ne doit pas être coupé.
+Réponds UNIQUEMENT en JSON valide, sans aucun autre texte :
+{"x":0.5,"y":0.35}
+- "x" : position horizontale du centre du sujet (0 = bord gauche, 1 = bord droit).
+- "y" : position verticale du centre du sujet (0 = bord haut, 1 = bord bas).
+Nombres décimaux entre 0 et 1.`;
+  const r = await runClaudeJson(prompt, { token, model, allowRead: true });
+  const frac = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5; };
+  return { x: frac(r?.x), y: frac(r?.y) };
+}
+
 // Émotion déduite d'un titre seul (aucune image exploitable). Pas d'outil Read nécessaire.
 export function analyzeTitle(title, { token, model = 'sonnet' } = {}) {
   const t = String(title || '').trim();
